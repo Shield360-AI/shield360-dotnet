@@ -1,0 +1,13 @@
+<Project>
+  <!-- Tiny apps the zero-code tests start through DOTNET_STARTUP_HOOKS. They never reference Shield360. -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <RunAnalyzers>false</RunAnalyzers>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- One place whatever the configuration (a solution build does not pass its configuration to projects outside it). -->
+    <OutputPath>$(MSBuildProjectDirectory)/bin/app/</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+</Project>

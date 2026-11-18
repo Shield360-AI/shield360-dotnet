@@ -1,0 +1,12 @@
+Shield360 .NET SDK
+Copyright 2026 ThinkFleet
+
+Licensed under the Apache License, Version 2.0 (see LICENSE, or
+http://www.apache.org/licenses/LICENSE-2.0).
+
+---
+
+The runtime application self-protection (RASP) detection rules in the RASP module adapt
+algorithms from Baidu OpenRASP (https://github.com/baidu/openrasp,
+plugins/official/plugin.js), Copyright Baidu, Inc., licensed under the Apache
+License, Version 2.0.

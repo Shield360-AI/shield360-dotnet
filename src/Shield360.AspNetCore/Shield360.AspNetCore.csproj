@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- A separate package, so the Shield360 package never pulls the ASP.NET Core shared framework into console apps and workers. -->
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Shield360.AspNetCore</RootNamespace>
+    <AssemblyName>Shield360.AspNetCore</AssemblyName>
+    <!-- The same version as Shield360: <Version> in Shield360.csproj stays the only place it is set. -->
+    <Version>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)../Shield360/Shield360.csproj')), '&lt;Version&gt;([^&lt;]+)&lt;/Version&gt;').Groups[1].Value)</Version>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsPackable>true</IsPackable>
+
+    <PackageId>Shield360.AspNetCore</PackageId>
+    <Title>Shield360 for ASP.NET Core</Title>
+    <Authors>ThinkfleetAI</Authors>
+    <Company>ThinkfleetAI</Company>
+    <Product>Shield360</Product>
+    <Description>ASP.NET Core middleware for Shield360 runtime application self-protection (RASP): records each request's untrusted input, runs virtual patches before the endpoint, and turns a block into a 403.</Description>
+    <PackageTags>shield360;rasp;aspnetcore;security;runtime-protection;virtual-patching</PackageTags>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/ThinkfleetAI/shield360-dotnet</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/ThinkfleetAI/shield360-dotnet</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <!-- SHIELD: each incoming request is a trace (Shield360RequestTracing). -->
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.19.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Shield360/Shield360.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../../LICENSE" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Shield360.Tests" />
+  </ItemGroup>
+
+</Project>

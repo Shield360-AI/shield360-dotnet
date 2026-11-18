@@ -1,0 +1,98 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Loaded by DOTNET_STARTUP_HOOKS into apps on .NET 8 and later. -->
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Shield360.StartupHook</RootNamespace>
+    <AssemblyName>Shield360.StartupHook</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Shipped as a directory (dotnet publish), not as a package: the app does not reference it. -->
+    <IsPackable>false</IsPackable>
+    <!-- The output directory is the hook directory: Shield360, Shield360.AspNetCore and every dependency next to the hook. -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Shield360/Shield360.csproj" />
+    <!--
+      Copied next to the hook for ASP.NET Core apps, where it loads through ASPNETCORE_HOSTINGSTARTUPASSEMBLIES.
+      Not referenced: its ASP.NET Core framework reference would drop the Microsoft.Extensions packages that
+      console apps need from the hook directory.
+    -->
+    <ProjectReference Include="../Shield360.AspNetCore/Shield360.AspNetCore.csproj" ReferenceOutputAssembly="false" OutputItemType="Shield360AspNetCoreOutput" />
+  </ItemGroup>
+
+  <!--
+    SHIELD: Shield360.AspNetCore traces requests with OpenTelemetry.Instrumentation.AspNetCore. Downloaded, not
+    referenced (its ASP.NET Core framework reference has the same problem as above), and copied next to the hook.
+    Keep the version in step with Shield360.AspNetCore.csproj.
+  -->
+  <PropertyGroup>
+    <Shield360AspNetCoreInstrumentationVersion>1.19.0</Shield360AspNetCoreInstrumentationVersion>
+    <_S360AspNetCoreInstrumentation>$(NuGetPackageRoot)opentelemetry.instrumentation.aspnetcore/$(Shield360AspNetCoreInstrumentationVersion)/lib/net8.0/OpenTelemetry.Instrumentation.AspNetCore.dll</_S360AspNetCoreInstrumentation>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageDownload Include="OpenTelemetry.Instrumentation.AspNetCore" Version="[$(Shield360AspNetCoreInstrumentationVersion)]" />
+  </ItemGroup>
+
+  <Target Name="CopyShield360AspNetCore" AfterTargets="Build">
+    <Copy SourceFiles="@(Shield360AspNetCoreOutput);$(_S360AspNetCoreInstrumentation)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <CallTarget Targets="_Shield360WriteStore" />
+  </Target>
+
+  <Target Name="PublishShield360AspNetCore" AfterTargets="Publish">
+    <Copy SourceFiles="@(Shield360AspNetCoreOutput);$(_S360AspNetCoreInstrumentation)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+    <MSBuild Projects="$(MSBuildProjectFullPath)" Targets="_Shield360WriteStore" Properties="Shield360HookDir=$(PublishDir);Configuration=$(Configuration)" />
+  </Target>
+
+  <!--
+    Shield360 needs newer System.* and Microsoft.Extensions.* assemblies (10.0) than the .NET 8 and 9
+    shared frameworks carry, and a startup hook cannot replace a framework assembly once the app runs.
+    The .NET host can, before the app starts: DOTNET_ADDITIONAL_DEPS names Shield360.AdditionalDeps.deps.json,
+    which lists those packages, and DOTNET_SHARED_STORE names the store/ directory that holds them, laid out
+    as store/<arch>/<tfm>/<package>/<version>/<asset> for each runtime the hook supports. Where two versions
+    of an assembly meet, the host takes the higher, as it does for an app's own package references.
+  -->
+  <Target Name="_Shield360WriteStore" DependsOnTargets="ResolvePackageAssets;ResolveLockFileCopyLocalFiles">
+    <PropertyGroup>
+      <Shield360HookDir Condition="'$(Shield360HookDir)' == ''">$(OutDir)</Shield360HookDir>
+      <_S360Store>$(Shield360HookDir)store/</_S360Store>
+    </PropertyGroup>
+    <ItemGroup>
+      <_S360Pkg Include="@(RuntimeCopyLocalItems)" Condition="'%(Extension)' == '.dll' and '%(RuntimeCopyLocalItems.DestinationSubDirectory)' == '' and ($([System.String]::Copy('%(RuntimeCopyLocalItems.NuGetPackageId)').StartsWith('System.')) or $([System.String]::Copy('%(RuntimeCopyLocalItems.NuGetPackageId)').StartsWith('Microsoft.Extensions.'))) and !$([System.String]::Copy('%(RuntimeCopyLocalItems.NuGetPackageId)').StartsWith('Microsoft.Extensions.AI'))" />
+    </ItemGroup>
+    <GetAssemblyIdentity AssemblyFiles="@(_S360Pkg)">
+      <Output TaskParameter="Assemblies" ItemName="_S360Identity" />
+    </GetAssemblyIdentity>
+    <ItemGroup>
+      <_S360Asm Include="@(_S360Pkg)">
+        <Lower>$([System.String]::Copy('%(NuGetPackageId)').ToLowerInvariant())/$([System.String]::Copy('%(NuGetPackageVersion)').ToLowerInvariant())</Lower>
+      </_S360Asm>
+      <_S360Id Include="@(_S360Identity)">
+        <Lower>$([System.String]::Copy('%(NuGetPackageId)').ToLowerInvariant())/$([System.String]::Copy('%(NuGetPackageVersion)').ToLowerInvariant())</Lower>
+      </_S360Id>
+      <_S360Target Include="@(_S360Id->'    &quot;%(NuGetPackageId)/%(NuGetPackageVersion)&quot;: { &quot;runtime&quot;: { &quot;%(PathInPackage)&quot;: { &quot;assemblyVersion&quot;: &quot;%(Version)&quot; } } }')" />
+      <_S360Library Include="@(_S360Id->'    &quot;%(NuGetPackageId)/%(NuGetPackageVersion)&quot;: { &quot;type&quot;: &quot;package&quot;, &quot;serviceable&quot;: false, &quot;sha512&quot;: &quot;&quot;, &quot;path&quot;: &quot;%(Lower)&quot; }')" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_S360Deps>{
+  &quot;runtimeTarget&quot;: { &quot;name&quot;: &quot;.NETCoreApp,Version=v8.0&quot;, &quot;signature&quot;: &quot;&quot; },
+  &quot;compilationOptions&quot;: {},
+  &quot;targets&quot;: { &quot;.NETCoreApp,Version=v8.0&quot;: {
+@(_S360Target, ',%0A')
+  } },
+  &quot;libraries&quot;: {
+@(_S360Library, ',%0A')
+  }
+}</_S360Deps>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(Shield360HookDir)Shield360.AdditionalDeps.deps.json" Lines="$(_S360Deps)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <Copy SourceFiles="@(_S360Asm)" DestinationFiles="@(_S360Asm->'$(_S360Store)x64/net8.0/%(Lower)/%(PathInPackage)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_S360Asm)" DestinationFiles="@(_S360Asm->'$(_S360Store)x64/net9.0/%(Lower)/%(PathInPackage)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_S360Asm)" DestinationFiles="@(_S360Asm->'$(_S360Store)x64/net10.0/%(Lower)/%(PathInPackage)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_S360Asm)" DestinationFiles="@(_S360Asm->'$(_S360Store)arm64/net8.0/%(Lower)/%(PathInPackage)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_S360Asm)" DestinationFiles="@(_S360Asm->'$(_S360Store)arm64/net9.0/%(Lower)/%(PathInPackage)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_S360Asm)" DestinationFiles="@(_S360Asm->'$(_S360Store)arm64/net10.0/%(Lower)/%(PathInPackage)')" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

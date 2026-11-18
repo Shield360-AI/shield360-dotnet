@@ -1,0 +1,116 @@
+name: Release
+
+# Publishes the `Shield360` package to NuGet.
+#
+# This file is generated. It lives in ThinkfleetAI/Shield360 as
+# .github/mirror-workflows/dotnet.yml and is written here by the mirror sync
+# as .github/workflows/release.yml, so edit it there.
+#
+# The release runs here rather than in Shield360 so that the package's
+# repository and Source Link point at a repository customers can open.
+#
+# Publishing uses NuGet trusted publishing: the job exchanges its GitHub OIDC
+# token for a short-lived API key, so no NuGet key is stored anywhere. The
+# nuget.org policy names this repository and this file (release.yml), and the
+# repository variable NUGET_USER names the nuget.org account that owns it.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+
+jobs:
+  build:
+    name: Build / NuGet package
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '9.0.x'
+
+      # The tag is what a person types. Refuse to publish a version the tag
+      # does not actually name, rather than shipping a surprise to NuGet.
+      - name: Verify the tag matches the package version
+        if: github.ref_type == 'tag'
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          CSPROJ_VERSION=$(sed -n 's|.*<Version>\(.*\)</Version>.*|\1|p' src/Shield360/Shield360.csproj)
+          echo "tag: $VERSION, csproj: $CSPROJ_VERSION"
+          test "$CSPROJ_VERSION" = "$VERSION"
+
+      - name: Build
+        run: dotnet build Shield360.sln -c Release -warnaserror
+
+      - name: Test
+        run: dotnet test Shield360.sln --no-build -c Release
+
+      - name: Pack
+        run: dotnet pack src/Shield360/Shield360.csproj --no-build -c Release -o artifacts
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nuget-package
+          path: |
+            artifacts/*.nupkg
+            artifacts/*.snupkg
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish / NuGet
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    # The OIDC token is requested only here, after the build and tests passed.
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: nuget-package
+          path: artifacts
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Check the NuGet account is configured
+        env:
+          NUGET_USER: ${{ vars.NUGET_USER }}
+        run: |
+          if [ -z "$NUGET_USER" ]; then
+            echo "::error::Set the repository variable NUGET_USER to the nuget.org account that owns the trusted publishing policy."
+            exit 1
+          fi
+
+      - name: Log in to NuGet with OIDC
+        id: login
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      # The key from the login step lasts about an hour and is never stored.
+      # --skip-duplicate makes a re-run after a partial failure safe. The
+      # symbols package next to the .nupkg is pushed with it.
+      - name: Push
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        run: |
+          dotnet nuget push "artifacts/*.nupkg" \
+            --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate

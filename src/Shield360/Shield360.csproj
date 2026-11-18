@@ -1,0 +1,65 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;netstandard2.0</TargetFrameworks>
+    <RootNamespace>Shield360</RootNamespace>
+    <AssemblyName>Shield360</AssemblyName>
+    <Version>0.1.0</Version>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsPackable>true</IsPackable>
+
+    <PackageId>Shield360</PackageId>
+    <Title>Shield360 .NET SDK</Title>
+    <Authors>ThinkfleetAI</Authors>
+    <Company>ThinkfleetAI</Company>
+    <Product>Shield360</Product>
+    <Description>OpenTelemetry-native AI observability for .NET: GenAI traces, token and cost metrics for Microsoft.Extensions.AI, the OpenAI .NET SDK, Azure AI Inference and Semantic Kernel, plus the Shield360 rule engine client and runtime application self-protection (RASP).</Description>
+    <PackageTags>shield360;opentelemetry;observability;genai;llm;openai;semantic-kernel;microsoft-extensions-ai;ai-governance</PackageTags>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <!-- The package is published from the public mirror, so these point there. -->
+    <PackageProjectUrl>https://github.com/ThinkfleetAI/shield360-dotnet</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/ThinkfleetAI/shield360-dotnet</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- Source Link (built into the .NET 8+ SDK) maps the PDBs to the mirror's commit. -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.AI" Version="10.11.0" />
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.11.0" />
+    <PackageReference Include="OpenTelemetry" Version="1.19.1" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.19.1" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.19.1" />
+    <!-- Ed25519 for the signed RASP config: neither net8.0 nor netstandard2.0 has it in the BCL. -->
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
+    <!-- IHttpClientFactory registration for the RASP outbound check (AddShield360Rasp on an IHttpClientBuilder). -->
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />
+  </ItemGroup>
+
+  <!-- SHIELD: outgoing HTTP and SQL Server traced out of the box. Incoming ASP.NET Core requests are traced by Shield360.AspNetCore, which already needs the ASP.NET Core framework. -->
+  <ItemGroup>
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.19.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.SqlClient" Version="1.19.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="pricing.json" LogicalName="Shield360.pricing.json" />
+    <!-- Byte-identical copies of sdk/rasp/rules/default-rules.json and sdk/rasp/testdata/dnslog-domains.json (a test checks). -->
+    <EmbeddedResource Include="Rasp/Data/default-rules.json" LogicalName="Shield360.Rasp.default-rules.json" />
+    <EmbeddedResource Include="Rasp/Data/dnslog-domains.json" LogicalName="Shield360.Rasp.dnslog-domains.json" />
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../../LICENSE" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Shield360.Tests" />
+    <InternalsVisibleTo Include="Shield360.AspNetCore" />
+    <InternalsVisibleTo Include="Shield360.EntityFrameworkCore" />
+    <InternalsVisibleTo Include="Shield360.StartupHook" />
+  </ItemGroup>
+
+</Project>
