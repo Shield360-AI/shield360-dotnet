@@ -17,8 +17,8 @@
     <PackageTags>shield360;opentelemetry;observability;genai;llm;openai;semantic-kernel;microsoft-extensions-ai;ai-governance</PackageTags>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <!-- The package is published from the public mirror, so these point there. -->
-    <PackageProjectUrl>https://github.com/ThinkfleetAI/shield360-dotnet</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/ThinkfleetAI/shield360-dotnet</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/Shield360-AI/shield360-dotnet</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Shield360-AI/shield360-dotnet</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Source Link (built into the .NET 8+ SDK) maps the PDBs to the mirror's commit. -->

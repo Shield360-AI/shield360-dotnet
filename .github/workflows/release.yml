@@ -2,7 +2,7 @@ name: Release
 
 # Publishes the `Shield360` package to NuGet.
 #
-# This file is generated. It lives in ThinkfleetAI/Shield360 as
+# This file is generated. It lives in Shield360-AI/Shield360 as
 # .github/mirror-workflows/dotnet.yml and is written here by the mirror sync
 # as .github/workflows/release.yml, so edit it there.
 #
