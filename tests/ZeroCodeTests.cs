@@ -111,6 +111,23 @@ public class ZeroCodeTests
     }
 
     [Fact]
+    public async Task RASP_is_on_in_monitor_mode_when_SHIELD360_RASP_is_unset()
+    {
+        var (exit, stdout, stderr) = await RunConsole(new Dictionary<string, string?> { ["SHIELD360_RASP"] = null });
+        Assert.Equal(0, exit);
+        Assert.Equal("RESULT loaded=True initialized=True rasp=True second=none", Result(stdout));
+        Assert.DoesNotContain("Shield360:", stderr, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SHIELD360_RASP_off_still_turns_RASP_off()
+    {
+        var (exit, stdout, _) = await RunConsole(new Dictionary<string, string?> { ["SHIELD360_RASP"] = "off" });
+        Assert.Equal(0, exit);
+        Assert.Equal("RESULT loaded=True initialized=True rasp=False second=none", Result(stdout));
+    }
+
+    [Fact]
     public async Task Without_the_hook_the_app_has_no_Shield360()
     {
         var (exit, stdout, _) = await RunConsole(new Dictionary<string, string?> { ["DOTNET_STARTUP_HOOKS"] = null });

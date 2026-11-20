@@ -157,7 +157,7 @@ export DOTNET_SHARED_STORE=/opt/shield360/store
 export OTEL_SERVICE_NAME=orders-api
 export SHIELD360_URL=https://app.shield360.ai
 export SHIELD360_API_KEY=...                      # from Settings > API keys
-export SHIELD360_RASP=monitor                     # or block; leave unset for telemetry only
+export SHIELD360_RASP=monitor                     # the default; block blocks attacks, off turns RASP off
 export SHIELD360_CONFIG_PUBLIC_KEY='{"kty":"OKP",...}'  # Runtime protection settings
 
 dotnet OrdersApi.dll
@@ -168,7 +168,7 @@ Why three variables: Shield360 builds against `Microsoft.Extensions.AI` 10, whic
 What the hook does, before `Main`:
 
 - Loads Shield360 and its dependencies from its own directory when the app does not carry them (the app's own copies win).
-- Starts Shield360 as `Shield360Sdk.Init()` would, from `OTEL_SERVICE_NAME`, `OTEL_DEPLOYMENT_ENVIRONMENT`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS`, `SHIELD360_URL`, `SHIELD360_API_KEY`, `SHIELD360_RASP` and the other variables in [Configuration](#configuration).
+- Starts Shield360 as `Shield360Sdk.Init()` would, from `OTEL_SERVICE_NAME`, `OTEL_DEPLOYMENT_ENVIRONMENT`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS`, `SHIELD360_URL`, `SHIELD360_API_KEY`, `SHIELD360_RASP` and the other variables in [Configuration](#configuration). RASP is on in monitor mode when `SHIELD360_RASP` is unset: attacks are reported, nothing is blocked.
 - In an ASP.NET Core app with RASP on, adds `Shield360.AspNetCore` to `ASPNETCORE_HOSTINGSTARTUPASSEMBLIES`.
 
 ### ASP.NET Core: the middleware without code

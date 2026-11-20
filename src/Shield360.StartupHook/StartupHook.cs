@@ -15,7 +15,8 @@ using Shield360.Rasp;
 /// the app's <c>Main</c>, with no reference to Shield360 in the app.
 /// <list type="bullet">
 /// <item>Shield360 and its dependencies load from this assembly's directory when the app does not carry them.</item>
-/// <item>Telemetry and RASP start as <c>Shield360Sdk.Init()</c> would start them.</item>
+/// <item>Telemetry and RASP start as <c>Shield360Sdk.Init()</c> would start them, with RASP in monitor
+/// mode when <c>SHIELD360_RASP</c> is unset (attacks reported, nothing blocked; <c>block</c> blocks, <c>off</c> turns it off).</item>
 /// <item>In an ASP.NET Core app with RASP on, <c>Shield360.AspNetCore</c> is added to
 /// <c>ASPNETCORE_HOSTINGSTARTUPASSEMBLIES</c>, so the RASP middleware is in the pipeline too
 /// (<c>ASPNETCORE_HOSTINGSTARTUPEXCLUDEASSEMBLIES=Shield360.AspNetCore</c> leaves it out).</item>
@@ -28,6 +29,10 @@ internal static class StartupHook
 {
     private const string HostingStartupVariable = "ASPNETCORE_HOSTINGSTARTUPASSEMBLIES";
     private const string AspNetCoreAssembly = "Shield360.AspNetCore";
+    private const string RaspVariable = "SHIELD360_RASP";
+
+    /// <summary>RASP's mode for a code-free start when nothing chose one: monitor (reports, never blocks).</summary>
+    private const string DefaultRaspMode = "monitor";
 
     private static int s_ran;
 
@@ -106,6 +111,13 @@ internal static class StartupHook
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void Start(string? dir)
     {
+        // A code-free start protects the app, it does not only observe it. Set in the process
+        // environment so every reader (the SDK, the ASP.NET Core hosting startup) agrees.
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(RaspVariable)))
+        {
+            Environment.SetEnvironmentVariable(RaspVariable, DefaultRaspMode);
+        }
+
         Shield360Sdk.InitZeroCode(Environment.GetEnvironmentVariable);
         if (Shield360Rasp.IsActive && !string.IsNullOrEmpty(dir) && File.Exists(Path.Combine(dir, AspNetCoreAssembly + ".dll")) && AspNetCorePresent())
         {
