@@ -390,6 +390,32 @@ The signed config (`GET /api/rasp/config`) is an Ed25519 JWS. It is verified aga
 
 What this version covers: request capture (query, route values, form and JSON body leaves, cookies, `User-Agent`, `Referer`, `X-Forwarded-For`, percent-decoded forms) and model output as input. It also covers every detector in the contract (SQL, NoSQL, command, shell spawn, path, file write, SSRF and outbound, deserialization, code, XXE, XSS), virtual patches run before the endpoint, the signed config, the sink hooks below, and events and the components report sent to `/api/guard/events`.
 
+### Security feature coverage
+
+Kept level with the TypeScript SDK (the reference). Each row passes the shared corpus named.
+
+| Feature | .NET | Shared corpus |
+|---|---|---|
+| RASP sinks, custom rules, passive IAST, deception, baseline | yes | `sdk/rasp/testdata/*.json` |
+| Protection triangle (Edge context, tightening, verdict header) | yes (ASP.NET Core middleware) | `sdk/rasp/testdata/triangle.json` |
+| Request correlation (Edge's request id and the trace id on `ILogger` records and the server span) | yes | `sdk/rasp/testdata/request-correlation.json` |
+| Defend (`defend()`, signed policy, client type, traps) | not yet | |
+| Upload protection (inspection, policy, deep scan, backdoor checks) | file names only | `uploads.json` not yet |
+
+**Protection triangle.** With Shield360 Edge in front of the app, the middleware verifies Edge's
+signed `X-Shield360-Edge-Context` header (keys from the signed config's `edgeContext`,
+cross-checked against Edge's own `X-Request-Id`). A client Edge marked (flagged, trap level 2 or
+more, or risk 70 or more, unless a verified crawler or agent) is blocked for injection-class attacks
+the app only monitors (`shield360.rasp.tightened_by_edge`; a rule's own action and the monitor-only
+switch still apply). Every event of such a request carries `shield360.edge.request_id`, and the
+first finding is answered with a signed `X-Shield360-Verdict` response header so Edge stops the
+client on its next request.
+
+**Request correlation.** Edge's request id (from its verified context, else an id-shaped
+`X-Request-Id`, which Edge always sets) goes on the request's server span and on every `ILogger`
+record written while it is served, as `shield360.edge.request_id`, with the trace id of the
+request's `traceparent` as `shield360.edge.trace_id` when no span is active.
+
 ### Sink hooks
 
 .NET has no runtime patching, so RASP checks a sink in one of three ways: through a `DiagnosticListener` event the library already raises before the call, through a handler or interceptor you register, or through a helper you call. In block mode each one throws `Shield360RaspBlockedException` before the call is made. In monitor mode it reports once and lets the call through. With RASP off it does nothing, and any failure inside a check lets the call through.

@@ -121,6 +121,16 @@ public sealed class Shield360RaspMiddleware
         try
         {
             ctx = RaspCapture.CaptureRequest(Shape(context));
+
+            // SHIELD: protection triangle — a verdict for Edge goes out as a response header while the headers are not sent.
+            var response = context.Response;
+            ctx.SetHeader = (name, value) =>
+            {
+                if (!response.HasStarted)
+                {
+                    response.Headers[name] = value;
+                }
+            };
             ctx.RouteSource = () => RouteTemplate(context);
             RaspClientAddress.Attach(ctx, context);
             ctx.Late = () =>

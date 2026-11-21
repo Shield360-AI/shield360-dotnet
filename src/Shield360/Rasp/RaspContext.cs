@@ -100,6 +100,19 @@ internal sealed class RaspContext
     /// </summary>
     public Func<bool>? Late { get; set; }
 
+    /// <summary>SHIELD: protection triangle — Edge's verified context for this request (EdgeContext).</summary>
+    public EdgeRequestContext? Edge { get; set; }
+
+    /// <summary>SHIELD: request correlation — Edge's request id (verified context, else X-Request-Id) and the traceparent's trace id (EdgeRequest).</summary>
+    public string? RequestId { get; set; }
+
+    public string? TraceId { get; set; }
+
+    /// <summary>SHIELD: protection triangle — sets a response header while the headers are not sent (the verdict for Edge).</summary>
+    public Action<string, string>? SetHeader { get; set; }
+
+    public bool VerdictSent { get; set; }
+
     /// <summary>The route template, resolved now if it was deferred.</summary>
     public string? ResolvedRoute()
     {

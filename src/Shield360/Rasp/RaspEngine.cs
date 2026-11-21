@@ -48,6 +48,9 @@ internal sealed class RemoteConfig
 
     /// <summary>The decoy paths (README "Deception"); null = deception off.</summary>
     public DeceptionConfig? Deception { get; init; }
+
+    /// <summary>SHIELD: protection triangle — the keys of Edge's context header and the app's verdicts (empty without Edge).</summary>
+    public IReadOnlyList<EdgeKey> EdgeKeys { get; init; } = Array.Empty<EdgeKey>();
 }
 
 /// <summary>One reported record: <c>{ name, time, attrs }</c>.</summary>
@@ -364,6 +367,16 @@ internal static class RaspEngine
             return null;
         }
 
+        // SHIELD: protection triangle — a client Edge already marked (flagged, deep in a honeypot, high risk) is
+        // blocked for injection-class attacks this app only monitors. A rule's own action still caps it.
+        var edgeCtx = extra?.Context ?? RaspScope.Current;
+        var tightened = mode == RaspMode.Monitor && f.Action is null && s_tighten.Contains(f.Attack)
+            && EdgeContext.SaysSuspect(edgeCtx?.Edge) && Volatile.Read(ref s_monitorOnly) == 0;
+        if (tightened)
+        {
+            mode = RaspMode.Block;
+        }
+
         var decision = mode == RaspMode.Block && !RaspNames.MonitorOnly(f.Attack) ? RaspDecision.Blocked : RaspDecision.Monitored;
         var eventId = NewEventId();
         try
@@ -400,6 +413,13 @@ internal static class RaspEngine
             Opt("shield360.rasp.method", SafeMethod(x.Method ?? ctx?.Method));
             Opt("shield360.rasp.framework", x.Framework ?? ctx?.Framework);
             Opt("shield360.rasp.cve", f.Cve is not null && s_cve.IsMatch(f.Cve) ? f.Cve : null);
+
+            // SHIELD: protection triangle — the Edge request this happened in (one correlated event in Shield360), and a tightening.
+            Opt("shield360.edge.request_id", ctx?.Edge?.Rid);
+            if (tightened)
+            {
+                attrs["shield360.rasp.tightened_by_edge"] = "true";
+            }
             if (remote?.Snippets == true && f.Input is not null)
             {
                 attrs["shield360.rasp.snippet"] = MaskSnippet(f.Input.Value);
@@ -424,6 +444,8 @@ internal static class RaspEngine
             // reporting never breaks the call
         }
 
+        SendVerdict(edgeCtx, f, decision);
+
         // Custom rules that look at built-in findings; the first blocking decision wins, the built-in one first.
         var custom = f.Attack == RaspAttackType.CustomRule ? null : RunFindingRules(f, sink, extra);
         if (decision == RaspDecision.Blocked)
@@ -437,6 +459,52 @@ internal static class RaspEngine
         }
 
         return decision;
+    }
+
+    /// <summary>SHIELD: protection triangle — attacks Edge's view of the client may tighten from monitor to block.</summary>
+    private static readonly HashSet<RaspAttackType> s_tighten = new()
+    {
+        RaspAttackType.SqlInjection, RaspAttackType.NoSqlInjection, RaspAttackType.CommandInjection, RaspAttackType.ShellSpawn,
+        RaspAttackType.CodeInjection, RaspAttackType.PathTraversal, RaspAttackType.Ssrf, RaspAttackType.Deserialization, RaspAttackType.Xxe,
+    };
+
+    /// <summary>SHIELD: protection triangle — the keys for Edge's context header and the app's verdicts (empty without Edge).</summary>
+    public static IReadOnlyList<EdgeKey> EdgeKeys => Remote?.EdgeKeys ?? Array.Empty<EdgeKey>();
+
+    /// <summary>
+    /// SHIELD: protection triangle — for a request that came through Edge (a verified context), tells
+    /// Edge about the detection in a signed response header: block for a blocked attack, flag for a
+    /// monitored one. Once per request, never throws.
+    /// </summary>
+    private static void SendVerdict(RaspContext? ctx, RaspFinding f, RaspDecision decision)
+    {
+        try
+        {
+            var keys = EdgeKeys;
+            if (ctx?.Edge is null || ctx.SetHeader is null || ctx.VerdictSent || keys.Count == 0)
+            {
+                return;
+            }
+
+            if (f.Attack == RaspAttackType.CustomRule && decision != RaspDecision.Blocked)
+            {
+                return;
+            }
+
+            var blocked = decision == RaspDecision.Blocked;
+            var v = EdgeContext.SignVerdict(keys, ctx.Edge.Rid, blocked ? "block" : "flag", RaspNames.Of(f.Attack), "rasp", blocked ? 3600 : 900, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            if (v is null)
+            {
+                return;
+            }
+
+            ctx.SetHeader(EdgeContext.VerdictHeader, v);
+            ctx.VerdictSent = true;
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            // reporting to Edge never breaks the call
+        }
     }
 
     /// <summary>Reports each custom finding rule the finding matches; returns the block exception of the first that blocks. Never throws.</summary>

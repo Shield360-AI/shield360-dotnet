@@ -28,6 +28,16 @@ namespace Shield360.AspNetCore;
 /// </remarks>
 internal static class Shield360RequestTracing
 {
+    /// <summary>The ASP.NET Core instrumentation's options: health probes are not traced, and Edge's request id goes on the server span.</summary>
+    internal static void Configure(OpenTelemetry.Instrumentation.AspNetCore.AspNetCoreTraceInstrumentationOptions o)
+    {
+        o.Filter = ShouldTrace;
+
+        // SHIELD: request correlation — an incoming request's X-Request-Id on its server span (Rasp/EdgeRequest.cs).
+        o.EnrichWithHttpRequest = (activity, request) =>
+            Rasp.EdgeRequest.TagServerSpan(activity, Rasp.EdgeRequest.RequestIdOf(request.Headers[Rasp.EdgeRequest.RequestIdHeader].ToString()));
+    }
+
     private static readonly object s_gate = new();
     private static TracerProvider? s_zeroCodeProvider;
 
@@ -49,7 +59,7 @@ internal static class Shield360RequestTracing
             return;
         }
 
-        services.ConfigureOpenTelemetryTracerProvider(b => b.AddAspNetCoreInstrumentation(o => o.Filter = ShouldTrace));
+        services.ConfigureOpenTelemetryTracerProvider(b => b.AddAspNetCoreInstrumentation(Configure));
     }
 
     private static void StartZeroCodeProvider(ResolvedOptions options)
@@ -63,7 +73,7 @@ internal static class Shield360RequestTracing
 
             s_zeroCodeProvider = Sdk.CreateTracerProviderBuilder()
                 .SetResourceBuilder(ResourceBuilder.CreateDefault().ConfigureShield360(options))
-                .AddAspNetCoreInstrumentation(o => o.Filter = ShouldTrace)
+                .AddAspNetCoreInstrumentation(Configure)
                 .AddShield360Exporter(options)
                 .Build();
         }

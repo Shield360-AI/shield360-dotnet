@@ -258,6 +258,20 @@ internal sealed class Shield360LogProcessor : CompositeProcessor<LogRecord>
             data.Exception = null;
         }
 
+        // SHIELD: request correlation — Edge's request id, and the trace id when no span carries it
+        // (Rasp/EdgeRequest.cs). Both are id-shaped by then and are not secrets, so they are not masked.
+        var ids = Rasp.EdgeRequest.Current();
+        if (ids.RequestId is not null)
+        {
+            attributes.RemoveAll(kv => kv.Key == Rasp.EdgeRequest.RequestIdAttr);
+            attributes.Add(new KeyValuePair<string, object?>(Rasp.EdgeRequest.RequestIdAttr, ids.RequestId));
+        }
+
+        if (ids.TraceId is not null && !ids.SpanActive && data.TraceId == default)
+        {
+            attributes.Add(new KeyValuePair<string, object?>(Rasp.EdgeRequest.TraceIdAttr, ids.TraceId));
+        }
+
         data.Attributes = attributes;
     }
 

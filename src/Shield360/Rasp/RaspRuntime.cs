@@ -177,6 +177,7 @@ internal static class RaspRuntime
             Rules = j.TryGetProperty("rules", out var rules) && rules.ValueKind == JsonValueKind.Array ? VirtualPatch.ListFromJson(rules) : null,
             CustomRulesJson = j.TryGetProperty("customRules", out var custom) && custom.ValueKind == JsonValueKind.Array ? custom.GetRawText() : null,
             Deception = RaspDeception.Parse(j.TryGetProperty("deception", out var deception) ? deception : null),
+            EdgeKeys = EdgeContext.ParseKeys(j.TryGetProperty("edgeContext", out var edgeContext) ? edgeContext : null),
         };
     }
 

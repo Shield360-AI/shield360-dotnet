@@ -140,6 +140,20 @@ internal static class RaspCapture
             Cookie = cookie,
             Body = string.Empty,
         });
+
+        // SHIELD: protection triangle — Edge's signed context, verified (never trusted unverified), cross-checked against Edge's own X-Request-Id.
+        var requestIdHeader = Header(shape.Headers, EdgeRequest.RequestIdHeader);
+        var edgeValue = Header(shape.Headers, EdgeContext.ContextHeader);
+        var keys = RaspEngine.EdgeKeys;
+        if (edgeValue.Length > 0 && keys.Count > 0)
+        {
+            ctx.Edge = EdgeContext.Verify(keys, edgeValue, shape.Method, path, requestIdHeader.Length > 0 ? requestIdHeader : null);
+        }
+
+        // SHIELD: request correlation — Edge's request id and the trace for log records and the server span (EdgeRequest).
+        ctx.RequestId = ctx.Edge?.Rid ?? EdgeRequest.RequestIdOf(requestIdHeader);
+        ctx.TraceId = EdgeRequest.TraceIdOf(Header(shape.Headers, "traceparent"));
+        EdgeRequest.TagServerSpan(System.Diagnostics.Activity.Current, ctx.RequestId);
         return ctx;
     }
 
