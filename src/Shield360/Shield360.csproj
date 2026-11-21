@@ -51,6 +51,9 @@
     <!-- Byte-identical copies of sdk/rasp/rules/default-rules.json and sdk/rasp/testdata/dnslog-domains.json (a test checks). -->
     <EmbeddedResource Include="Rasp/Data/default-rules.json" LogicalName="Shield360.Rasp.default-rules.json" />
     <EmbeddedResource Include="Rasp/Data/dnslog-domains.json" LogicalName="Shield360.Rasp.dnslog-domains.json" />
+    <!-- Byte-identical copies of cli/internal/coding/injection/rules.json and sdk/client-type/signatures.json (a test checks). -->
+    <EmbeddedResource Include="Defend/Data/injection-rules.json" LogicalName="Shield360.Defend.injection-rules.json" />
+    <EmbeddedResource Include="Defend/Data/client-type-signatures.json" LogicalName="Shield360.Defend.client-type-signatures.json" />
     <None Include="../../README.md" Pack="true" PackagePath="/" />
     <None Include="../../LICENSE" Pack="true" PackagePath="/" />
   </ItemGroup>

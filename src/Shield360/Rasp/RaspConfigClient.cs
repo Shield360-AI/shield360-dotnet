@@ -23,7 +23,7 @@ internal sealed record PinnedKey(string? Kid, string X, Ed25519PublicKeyParamete
 /// <summary>The claims of a verified signed config.</summary>
 internal sealed record RaspClaims(string Version, double Exp, JsonElement Json);
 
-/// <summary>The outcome of <see cref="RaspJws.Verify"/>: claims, or why the config was refused.</summary>
+/// <summary>The outcome of <see cref="RaspJws.Verify(string?, IReadOnlyList{PinnedKey}, string, double)"/>: claims, or why the config was refused.</summary>
 internal sealed record VerifyResult(RaspClaims? Claims, string? Kid, string? Reason)
 {
     public bool Ok => Claims is not null;
@@ -162,7 +162,11 @@ internal static class RaspJws
     /// header (any pinned key when the header names none listed), <c>v</c> 1, <c>app</c>
     /// equal to ours, <c>exp</c> in the future (60 s skew), a non-empty <c>version</c>.
     /// </summary>
-    public static VerifyResult Verify(string? token, IReadOnlyList<PinnedKey> keys, string app, double nowSeconds)
+    public static VerifyResult Verify(string? token, IReadOnlyList<PinnedKey> keys, string app, double nowSeconds) =>
+        Verify(token, keys, app, nowSeconds, JwsType);
+
+    /// <summary>SHIELD: Defend — the same verification for a signed document of another JWS typ.</summary>
+    public static VerifyResult Verify(string? token, IReadOnlyList<PinnedKey> keys, string app, double nowSeconds, string jwsType)
     {
         try
         {
@@ -187,7 +191,7 @@ internal static class RaspJws
                 return VerifyResult.Fail("alg");
             }
 
-            if (StringProp(h, "typ") != JwsType)
+            if (StringProp(h, "typ") != jwsType)
             {
                 return VerifyResult.Fail("typ");
             }
@@ -294,6 +298,12 @@ internal sealed class RaspConfigClientOptions
 
     /// <summary>A number in [0, 1) for the poll jitter.</summary>
     public Func<double>? Random { get; init; }
+
+    /// <summary>SHIELD: Defend — the document's path (default the RASP config's).</summary>
+    public string Path { get; init; } = "/api/rasp/config";
+
+    /// <summary>SHIELD: Defend — the document's JWS typ (default the RASP config's).</summary>
+    public string JwsType { get; init; } = RaspJws.JwsType;
 }
 
 /// <summary>
@@ -407,7 +417,7 @@ internal sealed class RaspConfigClient : IDisposable
             }
 
             var token = root.TryGetProperty("config", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString() : null;
-            var r = RaspJws.Verify(token, Trusted(), _o.App, NowSeconds);
+            var r = RaspJws.Verify(token, Trusted(), _o.App, NowSeconds, _o.JwsType);
             if (!r.Ok)
             {
                 return false;
@@ -541,7 +551,7 @@ internal sealed class RaspConfigClient : IDisposable
                 return PollResult.Rejected;
             }
 
-            using var request = new HttpRequestMessage(HttpMethod.Get, _base + "/api/rasp/config?app=" + Uri.EscapeDataString(_o.App));
+            using var request = new HttpRequestMessage(HttpMethod.Get, _base + _o.Path + "?app=" + Uri.EscapeDataString(_o.App));
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _o.ApiKey);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             if (_etag is not null && Current is not null)
@@ -583,7 +593,7 @@ internal sealed class RaspConfigClient : IDisposable
                 }
             }
 
-            var r = RaspJws.Verify(token, Trusted(), _o.App, NowSeconds);
+            var r = RaspJws.Verify(token, Trusted(), _o.App, NowSeconds, _o.JwsType);
             if (!r.Ok)
             {
                 Warn(r.Reason!);

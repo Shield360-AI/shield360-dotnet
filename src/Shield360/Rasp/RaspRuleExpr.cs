@@ -2019,7 +2019,7 @@ internal static class RaspRuleExpr
         return new RuleNet(bytes, prefix);
     }
 
-    private static bool InCidr(string ip, RuleNet net)
+    internal static bool InCidr(string ip, RuleNet net)
     {
         var pct = ip.IndexOf('%');
         var bytes = ParseIpBytes(pct == -1 ? ip : ip.Substring(0, pct));

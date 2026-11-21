@@ -399,8 +399,36 @@ Kept level with the TypeScript SDK (the reference). Each row passes the shared c
 | RASP sinks, custom rules, passive IAST, deception, baseline | yes | `sdk/rasp/testdata/*.json` |
 | Protection triangle (Edge context, tightening, verdict header) | yes (ASP.NET Core middleware) | `sdk/rasp/testdata/triangle.json` |
 | Request correlation (Edge's request id and the trace id on `ILogger` records and the server span) | yes | `sdk/rasp/testdata/request-correlation.json` |
-| Defend (`defend()`, signed policy, client type, traps) | not yet | |
+| Defend (`defend()`, signed policy, decisions feed, shared rate limits, reporting, client type, honeypot crumbs, content check) | yes (`Shield360.Defend.Shield360Defend`, `app.UseShield360Defend`) | injection golden corpus, crumb spec vector, byte-identical `injection-rules.json` and client-type signatures |
 | Upload protection (inspection, policy, deep scan, backdoor checks) | file names only | `uploads.json` not yet |
+
+**Defend.** Decide in the app whether a request may go on: deny, challenge and trust lists,
+rules (paths, methods, countries, ASNs, client types, prompt injection, rates), traps and honeypot
+crumbs, from a signed policy (`GET /api/defend/policy`, typ `shield360-defend+jws`, pinned like the
+RASP config, polled in the background, with the decisions feed). No network call on the request
+path unless shared rate limits are on. Fails open by default; `SHIELD360_DEFEND=monitor|off`
+overrides the mode. Deny, challenge and trap decisions and failed sign-ins are reported to
+Shield360 (never a header, body or query string).
+
+```csharp
+using Shield360.Defend;
+
+var shield = Shield360Defend.Create(new DefendOptions
+{
+    App = "checkout",
+    Url = Environment.GetEnvironmentVariable("SHIELD360_URL"),
+    ApiKey = Environment.GetEnvironmentVariable("SHIELD360_API_KEY"), // SHIELD360_CONFIG_PUBLIC_KEY pins the key
+});
+
+app.UseShield360Defend(shield); // Shield360.AspNetCore: 403 / 401 / honeypot decoys before the app
+
+// Or decide yourself, with content to check:
+var r = shield.Decide(request, DefendCall.WithContent(prompt));
+var answer = Shield360Defend.ResponseFor(r); // null: go on
+```
+
+`TrapHit`, `FailedLogin` and `Crumbs` (crumbs to place in robots.txt, HTML or fake config) report
+and feed the traps; `DefendOptions.Agents` verifies agent passports and Web Bot Auth signatures.
 
 **Protection triangle.** With Shield360 Edge in front of the app, the middleware verifies Edge's
 signed `X-Shield360-Edge-Context` header (keys from the signed config's `edgeContext`,
