@@ -231,7 +231,7 @@ internal static class EdgeContext
             }
 
             var m = Str(c, "m");
-            if (m != method || Str(c, "ph") != PathHash(path) || (!string.IsNullOrEmpty(requestId) && requestId != rid))
+            if (m != method || Str(c, "ph") != PathHash(path) || requestId != rid)
             {
                 return null;
             }

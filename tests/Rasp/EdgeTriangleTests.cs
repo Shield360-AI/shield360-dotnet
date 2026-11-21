@@ -160,9 +160,27 @@ public class EdgeTriangleTests : RaspStateTest
 
     private static RaspContext Request(Dictionary<string, string> headers, Dictionary<string, string> sent, string url = "/api/x?id=1")
     {
+        // Edge sends its own X-Request-Id (the signed rid) with every context; a test that sets none gets that one.
+        if (headers.TryGetValue(EdgeContext.ContextHeader, out var edge) && !headers.ContainsKey(EdgeRequest.RequestIdHeader) && edge.Split('.') is { Length: 4 } parts)
+        {
+            using var doc = JsonDocument.Parse(Convert.FromBase64String(Pad(parts[2].Replace('-', '+').Replace('_', '/'))));
+            if (doc.RootElement.TryGetProperty("rid", out var rid) && rid.ValueKind == JsonValueKind.String)
+            {
+                headers[EdgeRequest.RequestIdHeader] = rid.GetString()!;
+            }
+        }
+
         var ctx = RaspCapture.CaptureRequest(new RequestShape { Framework = "test", Method = "GET", Url = url, Headers = headers });
         ctx.SetHeader = (k, v) => sent[k] = v;
         return ctx;
+    }
+
+    [Fact]
+    public void A_context_without_Edges_request_id_is_not_trusted()
+    {
+        EdgeKeys();
+        var headers = new Dictionary<string, string> { [EdgeContext.ContextHeader] = CtxHeader("/api/x", new() { ["fl"] = true, ["rid"] = "req_lifted_0001" }) };
+        Assert.Null(RaspCapture.CaptureRequest(new RequestShape { Framework = "test", Method = "GET", Url = "/api/x", Headers = headers }).Edge);
     }
 
     private static readonly RaspFinding s_sqli = new(RaspAttackType.SqlInjection, "sqli.userinput", new RaspInput("1 or 1=1", "query.id"));
@@ -249,6 +267,8 @@ public class EdgeTriangleTests : RaspStateTest
             if (S(c["edgeRid"]) is { } rid)
             {
                 headers[EdgeContext.ContextHeader] = CtxHeader("/a", new() { ["rid"] = rid });
+                // A context verifies only with Edge's own X-Request-Id (the same id).
+                headers.TryAdd(EdgeRequest.RequestIdHeader, rid);
             }
 
             var exporter = new AppLogsTests.CapturingExporter();
