@@ -82,6 +82,19 @@ public sealed class RaspOptions
     /// <c>SHIELD360_IAST_SAMPLE_RATE</c> and the signed config's rate win over it.
     /// </summary>
     public double? IastSampleRate { get; set; }
+
+    /// <summary>
+    /// The local upload policy, used without a signed config (README "Upload policy and
+    /// deep scan"): the signed config's uploads block as JSON (servedDirs, maxBytes, allow,
+    /// deepScan, routes, trusted, rules).
+    /// </summary>
+    public string? Uploads { get; set; }
+
+    /// <summary>How many bytes of each upload the signatures read (default 8 MiB, at most 64 MiB).</summary>
+    public long UploadScanBytes { get; set; }
+
+    /// <summary>Where blocked uploads are moved (an absolute path; default the temp directory + shield360-quarantine).</summary>
+    public string? QuarantineDir { get; set; }
 }
 
 /// <summary>RASP allow-lists. The signed config's lists replace these when it sets them.</summary>

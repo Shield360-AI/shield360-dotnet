@@ -400,7 +400,7 @@ Kept level with the TypeScript SDK (the reference). Each row passes the shared c
 | Protection triangle (Edge context, tightening, verdict header) | yes (ASP.NET Core middleware) | `sdk/rasp/testdata/triangle.json` |
 | Request correlation (Edge's request id and the trace id on `ILogger` records and the server span) | yes | `sdk/rasp/testdata/request-correlation.json` |
 | Defend (`defend()`, signed policy, decisions feed, shared rate limits, reporting, client type, honeypot crumbs, content check) | yes (`Shield360.Defend.Shield360Defend`, `app.UseShield360Defend`) | injection golden corpus, crumb spec vector, byte-identical `injection-rules.json` and client-type signatures |
-| Upload protection (inspection, policy, deep scan, backdoor checks) | file names only | `uploads.json` not yet |
+| Upload protection (inspection, policy, deep scan, backdoor checks) | yes (ASP.NET Core middleware for multipart files, `RaspUploads`, `RaspDeepScan`, `RaspFile`/process wrappers) | `sdk/rasp/testdata/uploads.json`, byte-identical `upload-signatures.json` |
 
 **Defend.** Decide in the app whether a request may go on: deny, challenge and trust lists,
 rules (paths, methods, countries, ASNs, client types, prompt injection, rates), traps and honeypot
@@ -429,6 +429,33 @@ var answer = Shield360Defend.ResponseFor(r); // null: go on
 
 `TrapHit`, `FailedLogin` and `Crumbs` (crumbs to place in robots.txt, HTML or fake config) report
 and feed the traps; `DefendOptions.Agents` verifies agent passports and Web Bot Auth signatures.
+
+**Uploads** (`sdk/rasp/README.md`, "Uploads"), four layers:
+
+- **Inspection:** the ASP.NET Core middleware inspects every `multipart/form-data` file part
+  (the whole file, read once more from the request's buffer and rewound) with the route's policy
+  before the app runs; a refused file answers 403. Elsewhere call
+  `RaspUploads.Inspect(stream, name, contentType, RaspUploads.OptionsFor(route))` (or
+  `InspectAsync`, or `InspectFile` for a file on disk). It reads the real type, archives (zip,
+  tar), Office macros and OLE objects, polyglots, active content, EICAR and the web-shell
+  signatures in bounded memory (`UploadScanner` for your own streaming).
+- **Signed policy:** the signed config's `uploads` block (`allow`, `maxBytes`, `servedDirs`,
+  `trusted`, `rules`, `deepScan`, `routes`), else `RaspOptions.Uploads` (the same block as JSON),
+  with `UploadScanBytes` and `QuarantineDir` as local options.
+- **Deep scan:** with `deepScan.mode` monitor or block, the customer's own clamd (`zINSTREAM` over
+  `tcp:` or `unix:`, streamed as the part is read), the hash-only reputation lookup (only the
+  SHA-256 leaves the app) and the organization's own signatures. `scan: sync` holds the upload
+  until the engines answer; `scan: async` scans after `RaspUploads.Saved` and moves a file the mode
+  blocks to quarantine. `failMode: closed` raises `upload.scan_unavailable`. Engine status goes to
+  Shield360 as `shield360.rasp.scanner` records, and a new `deepScan.testId` tests the engines once.
+- **Backdoor checks:** `RaspUploads.Saved(path, verdict, options)` remembers where an upload was
+  saved (as do `InspectFile`, and writes during the request whose name is an upload's name or whose
+  bytes are an upload's). `RaspFile` writes, `Copy` and `Move` refuse saving one under a
+  server-script name or into a served folder (`backdoor.write_executable`,
+  `backdoor.write_served`); `Shield360Rasp.StartProcess`, `CheckProcess` and `CheckCommand` refuse
+  running one (directly, by an interpreter or in `sh -c`); `CheckChmod` an execute bit;
+  `CheckLoad` (and `CheckAssemblyLoad` for a path) and `CheckExtract` cover plugin loads and
+  archive extraction.
 
 **Protection triangle.** With Shield360 Edge in front of the app, the middleware verifies Edge's
 signed `X-Shield360-Edge-Context` header (keys from the signed config's `edgeContext`,

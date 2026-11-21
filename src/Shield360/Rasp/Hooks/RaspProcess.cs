@@ -114,6 +114,9 @@ internal static class RaspProcess
             sink,
             (ctx, inputs) => DetectArgv(ArgvOf(info), inputs, ctx?.InRequest == true, RaspEngine.AllowLists().Commands),
             requireInputs: false);
+
+        // SHIELD: backdoor checks — a saved upload run as a program or by an interpreter.
+        RaspUploadBackdoor.CheckExec(sink, ArgvOf(info));
     }
 
     public static void CheckCommandLine(string command, string sink)
@@ -127,5 +130,8 @@ internal static class RaspProcess
             sink,
             (ctx, inputs) => DetectCommand(command, inputs, ctx?.InRequest == true, RaspEngine.AllowLists().Commands),
             requireInputs: false);
+
+        // SHIELD: backdoor checks — a saved upload run by a command of the line.
+        RaspUploadBackdoor.CheckShell(sink, command);
     }
 }

@@ -178,6 +178,7 @@ internal static class RaspRuntime
             CustomRulesJson = j.TryGetProperty("customRules", out var custom) && custom.ValueKind == JsonValueKind.Array ? custom.GetRawText() : null,
             Deception = RaspDeception.Parse(j.TryGetProperty("deception", out var deception) ? deception : null),
             EdgeKeys = EdgeContext.ParseKeys(j.TryGetProperty("edgeContext", out var edgeContext) ? edgeContext : null),
+            Uploads = j.TryGetProperty("uploads", out var uploads) ? UploadPolicy.Parse(uploads) : null, // SHIELD: uploads
         };
     }
 
@@ -282,6 +283,10 @@ internal static class RaspRuntime
                 MonitorOnly: unpinned,
                 Env: env));
             RaspEngine.AlwaysAllowedHosts = AlwaysAllowedHosts(new[] { ctx.Url, ctx.OtlpEndpoint });
+
+            // SHIELD: uploads — the local policy, and the environment the reputation lookup uses.
+            RaspUploads.SetLocal(o.Uploads, o.UploadScanBytes, o.QuarantineDir);
+            RaspDeepScan.SetEnv(hasRemote ? ctx.Url : null, hasRemote ? ctx.ApiKey : null, ctx.Handler);
             RaspIast.Configure(new IastSettings(o.Iast, o.IastSampleRate, ctx.ApplicationName, ctx.Environment, env));
             if (!enabled)
             {
@@ -358,7 +363,9 @@ internal static class RaspRuntime
                     CacheDir = string.IsNullOrEmpty(o.CacheDir) ? Path.Combine(Path.GetTempPath(), "shield360-rasp") : o.CacheDir!,
                     OnConfig = claims =>
                     {
-                        RaspEngine.SetRemoteConfig(claims is null ? null : ToRemote(claims));
+                        var remote = claims is null ? null : ToRemote(claims);
+                        RaspEngine.SetRemoteConfig(remote);
+                        RaspDeepScan.TestEngines(remote?.Uploads?.DeepScan); // SHIELD: uploads — a new deepScan.testId
                         RaspIast.SetRemote(claims is null ? null : RaspIast.RemoteOf(claims));
                     },
 

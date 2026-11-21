@@ -1708,6 +1708,23 @@ internal static class RaspRuleExpr
     /// <summary>Whether a pattern is in the safe subset.</summary>
     public static bool IsSafeRegex(string pattern) => CompileRegex(pattern) is not null;
 
+    /// <summary>
+    /// SHIELD: upload signatures — runs a compiled program over code points; an exhausted
+    /// budget is left negative and the run is no match.
+    /// </summary>
+    internal static bool UploadRegexMatch(RegexInst[] prog, int[] subject, RuleBudget budget)
+    {
+        try
+        {
+            return RunRegex(prog, subject, budget);
+        }
+        catch (BudgetExhaustedException)
+        {
+            budget.Steps = -1;
+            return false;
+        }
+    }
+
     private static bool ClassHas(int[] r, int c)
     {
         for (var k = 0; k < r.Length; k += 2)

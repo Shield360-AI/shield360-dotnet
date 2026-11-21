@@ -195,13 +195,13 @@ public class RaspUploadTests : RaspStateTest
         return app;
     }
 
-    private static MultipartFormDataContent Form(string fileName)
+    private static MultipartFormDataContent Form(string fileName, string content = "fixture content")
     {
         var form = new MultipartFormDataContent(Boundary)
         {
             { new StringContent("Quarterly report"), "title" },
         };
-        form.Add(new ByteArrayContent(Encoding.UTF8.GetBytes("fixture content")), "attachment", fileName);
+        form.Add(new ByteArrayContent(Encoding.UTF8.GetBytes(content)), "attachment", fileName);
         return form;
     }
 
@@ -232,7 +232,8 @@ public class RaspUploadTests : RaspStateTest
         Assert.Equal(HttpStatusCode.Forbidden, blocked.StatusCode);
         Assert.Equal("file_write.upload", (string?)JsonNode.Parse(await blocked.Content.ReadAsStringAsync())!["rule"]);
         sink.Events.Clear();
-        var ok = await client.PostAsync(new Uri("/upload", UriKind.Relative), Form("report.pdf"));
+        // A real PDF: a text file named .pdf is reported as upload.type_mismatch (monitor only).
+        var ok = await client.PostAsync(new Uri("/upload", UriKind.Relative), Form("report.pdf", "%PDF-1.4\n%%EOF\n"));
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
         Assert.Empty(sink.Events);
     }

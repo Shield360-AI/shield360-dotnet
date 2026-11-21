@@ -165,6 +165,48 @@ public static partial class Shield360Rasp
         RaspCodeSinks.CheckTemplate(engine, source, sink);
 
     /// <summary>
+    /// Checks a permission change before it is made: <c>backdoor.chmod</c> when a saved
+    /// upload (<see cref="RaspUploads.Saved"/>) gets an execute bit.
+    /// </summary>
+    public static void CheckChmod(string? path, bool executable, string sink = "file.chmod")
+    {
+        if (string.IsNullOrEmpty(path) || !executable || !RaspEngine.IsActive || !RaspUploadBackdoor.AnyKnown())
+        {
+            return;
+        }
+
+        RaspUploadBackdoor.Check(sink, () => RaspUploadBackdoor.PathFinding("backdoor.chmod", path!));
+    }
+
+    /// <summary>
+    /// Checks a file about to be loaded as code (a plugin assembly, a script file):
+    /// <c>backdoor.include</c> when it is a saved upload (<see cref="RaspUploads.Saved"/>).
+    /// </summary>
+    public static void CheckLoad(string? path, string sink = "code.load")
+    {
+        if (string.IsNullOrEmpty(path) || !RaspEngine.IsActive || !RaspUploadBackdoor.AnyKnown())
+        {
+            return;
+        }
+
+        RaspUploadBackdoor.Check(sink, () => RaspUploadBackdoor.PathFinding("backdoor.include", path!));
+    }
+
+    /// <summary>
+    /// Checks an archive about to be extracted: <c>backdoor.extract</c> when it is a saved
+    /// upload with an entry the traversal or link rule finds.
+    /// </summary>
+    public static void CheckExtract(string? archive, string sink = "archive.extract")
+    {
+        if (string.IsNullOrEmpty(archive) || !RaspEngine.IsActive || !RaspUploadBackdoor.AnyKnown())
+        {
+            return;
+        }
+
+        RaspUploadBackdoor.Check(sink, () => RaspUploadBackdoor.ExtractFinding(archive!));
+    }
+
+    /// <summary>
     /// Checks an assembly name or path before <c>Assembly.Load</c>, <c>Assembly.LoadFrom</c>,
     /// <c>Assembly.LoadFile</c> or <c>AssemblyLoadContext.LoadFromAssemblyPath</c> loads it:
     /// the name equal to an input, or holding an input that is an absolute path or holds
@@ -179,6 +221,7 @@ public static partial class Shield360Rasp
         }
 
         RaspHooks.Run(sink, (_, inputs) => RaspDetect.Include(nameOrPath, inputs));
+        CheckLoad(nameOrPath, sink); // SHIELD: backdoor checks
     }
 
     /// <summary>Checks data before <paramref name="deserializer"/> reads it (<c>deser.binaryformatter</c>, <c>deser.typename</c>).</summary>

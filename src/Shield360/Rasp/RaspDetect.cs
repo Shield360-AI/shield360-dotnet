@@ -616,7 +616,7 @@ internal static class RaspDetect
         "/etc/passwd", "/etc/shadow", "/proc/self/environ", "/root/.bash_history", "/var/run/secrets/kubernetes.io/serviceaccount/token",
     };
 
-    private static readonly Regex s_scriptFile =
+    internal static readonly Regex s_scriptFile =
         Re(@"\.(aspx?|jspx?|php[3-7]?|phar|phtml|sh|bash|py|pyc|pl|rb|so|dll|dylib|exe|cgi|js|mjs|cjs)\.?\z", RegexOptions.IgnoreCase);
 
     private static readonly Regex s_ntfs = Re(@"::\$(DATA|INDEX)\z", RegexOptions.IgnoreCase);

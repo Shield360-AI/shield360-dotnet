@@ -51,6 +51,9 @@ internal sealed class RemoteConfig
 
     /// <summary>SHIELD: protection triangle — the keys of Edge's context header and the app's verdicts (empty without Edge).</summary>
     public IReadOnlyList<EdgeKey> EdgeKeys { get; init; } = Array.Empty<EdgeKey>();
+
+    /// <summary>SHIELD: uploads — the signed config's uploads block, read (null when absent).</summary>
+    public UploadPolicy? Uploads { get; init; }
 }
 
 /// <summary>One reported record: <c>{ name, time, attrs }</c>.</summary>
@@ -354,7 +357,7 @@ internal static class RaspEngine
     /// </summary>
     public static RaspDecision? HandleFinding(RaspFinding f, string sink, FindingExtra? extra = null)
     {
-        var mode = ModeFor(f.Attack);
+        var mode = UploadMode(f, ModeFor(f.Attack));
 
         // A rule's own action (virtual patches, custom rules) caps the mode.
         if (f.Action is RaspMode action && RaspNames.Rank(action) < RaspNames.Rank(mode))
@@ -435,6 +438,7 @@ internal static class RaspEngine
                 attrs["shield360.rasp.sql.dialect"] = f.Dialect;
             }
 
+            RaspUploads.AddAttrs(attrs, f); // SHIELD: uploads — README "Upload event attributes"
             var time = DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
             var foldKey = string.Join("\u0000", RaspNames.Of(f.Attack), f.Rule, sink, route, decisionName);
             Volatile.Read(ref s_sink)?.Add(new RaspEvent("shield360.rasp.event", time, attrs), foldKey);
@@ -459,6 +463,40 @@ internal static class RaspEngine
         }
 
         return decision;
+    }
+
+    /// <summary>
+    /// SHIELD: uploads — an upload route's own mode decides instead, capped by a local off, the
+    /// kill switch (inactive) and no pinned key, like attack modes.
+    /// </summary>
+    private static RaspMode UploadMode(RaspFinding f, RaspMode mode)
+    {
+        if (f.Mode is not { } own || !IsActive)
+        {
+            return mode;
+        }
+
+        var l = Volatile.Read(ref s_local);
+        if (l.Attacks.TryGetValue(f.Attack, out var localMode) && localMode == RaspMode.Off)
+        {
+            return mode;
+        }
+
+        return own == RaspMode.Block && Volatile.Read(ref s_monitorOnly) == 1 ? RaspMode.Monitor : own;
+    }
+
+    /// <summary>SHIELD: uploads — the mode that decides an upload finding (its own mode and action, capped as HandleFinding does).</summary>
+    internal static RaspMode EffectiveUploadMode(RaspFinding f)
+    {
+        var m = UploadMode(f, ModeFor(f.Attack));
+        return f.Action is RaspMode action && RaspNames.Rank(action) < RaspNames.Rank(m) ? action : m;
+    }
+
+    /// <summary>SHIELD: uploads — the event sink, for the scanner status record.</summary>
+    internal static void AddEvent(string name, IReadOnlyDictionary<string, string> attrs)
+    {
+        var time = DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
+        Volatile.Read(ref s_sink)?.Add(new RaspEvent(name, time, attrs), name + "\u0000" + Guid.NewGuid().ToString("N")); // never folded
     }
 
     /// <summary>SHIELD: protection triangle — attacks Edge's view of the client may tighten from monitor to block.</summary>

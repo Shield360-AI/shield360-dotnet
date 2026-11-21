@@ -78,6 +78,12 @@ public enum RaspAttackType
     /// config's <c>action</c> decides, capped by this mode; unset leaves it to the action.
     /// </summary>
     Deception,
+
+    /// <summary><c>malicious_upload</c>: what an uploaded file is (README "Uploads").</summary>
+    MaliciousUpload,
+
+    /// <summary><c>upload_backdoor</c>: an uploaded file saved where it runs, loaded, run or made executable (README "Backdoor checks").</summary>
+    UploadBackdoor,
 }
 
 /// <summary>Where a piece of untrusted input came from.</summary>
@@ -119,7 +125,14 @@ public sealed class RaspInput
 /// <see cref="Target"/> is the raw destination an allow-list rule compared (contract: "Allow-list targets"),
 /// masked before it is sent; <see cref="Dialect"/> is the SQL dialect the lexer used.
 /// </remarks>
-internal sealed record RaspFinding(RaspAttackType Attack, string Rule, RaspInput? Input = null, string? Cve = null, RaspMode? Action = null, string? Target = null, string? Dialect = null);
+internal sealed record RaspFinding(RaspAttackType Attack, string Rule, RaspInput? Input = null, string? Cve = null, RaspMode? Action = null, string? Target = null, string? Dialect = null)
+{
+    /// <summary>SHIELD: uploads — when set, decides instead of the attack type's mode (an upload route's policy), capped like attack modes.</summary>
+    public RaspMode? Mode { get; init; }
+
+    /// <summary>SHIELD: uploads — README "Upload event attributes"; never a file name or content.</summary>
+    public UploadAttrs? Upload { get; init; }
+}
 
 /// <summary>The contract's wire names for modes, attack types and sources.</summary>
 internal static class RaspNames
@@ -128,7 +141,7 @@ internal static class RaspNames
     {
         "sql_injection", "nosql_injection", "command_injection", "shell_spawn", "path_traversal", "file_write",
         "ssrf", "outbound", "deserialization", "code_injection", "xxe", "xss", "virtual_patch", "baseline", "custom_rule",
-        "deception",
+        "deception", "malicious_upload", "upload_backdoor",
     };
 
     private static readonly Dictionary<string, RaspAttackType> s_byName = Build();

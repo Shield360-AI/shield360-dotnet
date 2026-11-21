@@ -156,6 +156,12 @@ public sealed class Shield360RaspMiddleware
             {
                 RaspCapture.CaptureBody(ctx, new BodyShape(body, contentType, uploads));
             }
+
+            // SHIELD: uploads — each file part's bytes, with the route's policy, before the app.
+            if (uploads.Count > 0)
+            {
+                await RaspUploadInspection.InspectAsync(context, ctx, context.RequestAborted).ConfigureAwait(false);
+            }
             else if (HasNoBody(context))
             {
                 // No body, or an empty one: a known, empty body. A body that reads empty although the

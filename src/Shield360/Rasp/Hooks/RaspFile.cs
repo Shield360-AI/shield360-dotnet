@@ -58,6 +58,21 @@ public static class RaspFile
             sink,
             (ctx, inputs) => RaspDetect.FilePath(path, op, inputs, RaspEngine.AllowLists().FileRoots, ctx?.InRequest == true),
             requireInputs: false);
+
+        // SHIELD: backdoor checks — a write named after one of the request's uploads.
+        if (op is FileOp.Write or FileOp.Append)
+        {
+            RaspUploadBackdoor.CheckWrite(sink, path);
+        }
+    }
+
+    /// <summary>SHIELD: backdoor checks — bytes about to be written that are one of the request's uploads, when the name did not already say so.</summary>
+    internal static void CheckData(string path, byte[]? data, string sink)
+    {
+        if (data is not null && RaspEngine.IsActive && RaspUploadBackdoor.RequestUploads().Count > 0 && RaspUploadBackdoor.Named(path) is null)
+        {
+            RaspUploadBackdoor.CheckWrite(sink, path, null, data);
+        }
     }
 
     /// <summary>
@@ -83,6 +98,12 @@ public static class RaspFile
                     string.IsNullOrEmpty(second) ? null : RaspDetect.FilePath(second!, secondOp, inputs, roots, inRequest));
             },
             requireInputs: false);
+
+        // SHIELD: backdoor checks — a saved upload moved or copied somewhere executable or served.
+        if (secondOp is FileOp.Write or FileOp.Rename && !string.IsNullOrEmpty(second))
+        {
+            RaspUploadBackdoor.CheckWrite(sink, second, first);
+        }
     }
 
     private static FileOp OpOf(FileMode mode, FileAccess access) =>
@@ -122,6 +143,7 @@ public static class RaspFile
     public static void WriteAllText(string path, string? contents)
     {
         Check(path, FileOp.Write, "File.WriteAllText");
+        CheckData(path, contents is null ? null : Encoding.UTF8.GetBytes(contents), "File.WriteAllText");
         File.WriteAllText(path, contents);
     }
 
@@ -129,6 +151,7 @@ public static class RaspFile
     public static void WriteAllText(string path, string? contents, Encoding encoding)
     {
         Check(path, FileOp.Write, "File.WriteAllText");
+        CheckData(path, contents is null ? null : encoding.GetBytes(contents), "File.WriteAllText");
         File.WriteAllText(path, contents, encoding);
     }
 
@@ -136,6 +159,7 @@ public static class RaspFile
     public static void WriteAllBytes(string path, byte[] bytes)
     {
         Check(path, FileOp.Write, "File.WriteAllBytes");
+        CheckData(path, bytes, "File.WriteAllBytes");
         File.WriteAllBytes(path, bytes);
     }
 
