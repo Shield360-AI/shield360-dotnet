@@ -81,6 +81,8 @@ public class EdgeTriangleTests : RaspStateTest
                 Assert.Equal(e["waf"]?.AsArray().Select(w => w!.GetValue<string>()).ToList(), got.Waf?.ToList());
                 Assert.Equal(S(e["tp"]), got.Traceparent);
                 Assert.Equal(S(e["rt"]), got.RedTeam);
+                Assert.Equal(S(e["sid"]), got.Session);
+                Assert.Equal(S(e["fp"]), got.Fingerprint);
             }
 
             n++;
