@@ -25,7 +25,8 @@ internal sealed class EdgeKey
 
 /// <summary>Edge's verified context for a request (protection triangle).</summary>
 internal sealed record EdgeRequestContext(
-    string Rid, long Iat, long Exp, string Method, string PathHash, string ClientType, int Risk, int Trap, bool Flagged, IReadOnlyList<string>? Waf, string? Traceparent);
+    string Rid, long Iat, long Exp, string Method, string PathHash, string ClientType, int Risk, int Trap, bool Flagged, IReadOnlyList<string>? Waf, string? Traceparent,
+    string? RedTeam = null);
 
 /// <summary>
 /// SHIELD: the protection triangle (agent-guides/edge-deception-spec.md, "Protection triangle").
@@ -49,10 +50,12 @@ internal static class EdgeContext
     private static readonly Regex s_kid = new("^[0-9a-f]{8}\\z", RegexOptions.CultureInvariant, s_rx);
     private static readonly Regex s_rid = new("^[A-Za-z0-9_-]{8,64}\\z", RegexOptions.CultureInvariant, s_rx);
     private static readonly Regex s_cat = new("^[a-z][a-z0-9_]{0,39}\\z", RegexOptions.CultureInvariant, s_rx);
+    // A red team run id (rt): Edge verified the request's X-Shield360-Red-Team header.
+    private static readonly Regex s_run = new("^[a-z0-9]{8,40}\\z", RegexOptions.CultureInvariant, s_rx);
     private static readonly Regex s_key = new("^[A-Za-z0-9_-]{43}\\z", RegexOptions.CultureInvariant, s_rx);
     private static readonly Regex s_b64 = new("^[A-Za-z0-9_-]*\\z", RegexOptions.CultureInvariant, s_rx);
     private static readonly HashSet<string> s_clients = new(StringComparer.Ordinal) { "human", "verified_crawler", "verified_agent", "automation", "suspected_agent", "unknown" };
-    private static readonly HashSet<string> s_contextKeys = new(StringComparer.Ordinal) { "rid", "iat", "exp", "m", "ph", "ct", "risk", "waf", "trap", "fl", "tp" };
+    private static readonly HashSet<string> s_contextKeys = new(StringComparer.Ordinal) { "rid", "iat", "exp", "m", "ph", "ct", "risk", "waf", "trap", "fl", "tp", "rt" };
     private static readonly EdgeReplayCache s_replay = new();
 
     /// <summary>The signed config's <c>edgeContext</c>: <c>{"keys": [{"kid", "key"}]}</c>, at most two; anything malformed: none.</summary>
@@ -261,13 +264,24 @@ internal static class EdgeContext
                 }
             }
 
+            string? rt = null;
+            if (c.TryGetProperty("rt", out var r))
+            {
+                if (r.ValueKind != JsonValueKind.String || !s_run.IsMatch(r.GetString()!))
+                {
+                    return null;
+                }
+
+                rt = r.GetString();
+            }
+
             if (cache is not null && !cache.First("c:" + rid, exp + Skew, now))
             {
                 return null;
             }
 
             var fl = c.TryGetProperty("fl", out var f) && f.ValueKind == JsonValueKind.True;
-            return new EdgeRequestContext(rid, iat, exp, m!, Str(c, "ph")!, ct, (int)risk, (int)trap, fl, waf, Str(c, "tp"));
+            return new EdgeRequestContext(rid, iat, exp, m!, Str(c, "ph")!, ct, (int)risk, (int)trap, fl, waf, Str(c, "tp"), rt);
         }
         catch (Exception e) when (e is not OutOfMemoryException)
         {
