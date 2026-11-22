@@ -83,6 +83,8 @@ public class EdgeTriangleTests : RaspStateTest
                 Assert.Equal(S(e["rt"]), got.RedTeam);
                 Assert.Equal(S(e["sid"]), got.Session);
                 Assert.Equal(S(e["fp"]), got.Fingerprint);
+                Assert.Equal(S(e["dk"]), got.DeviceKey);
+                Assert.Equal(S(e["dt"]), got.DeviceTrust);
             }
 
             n++;
