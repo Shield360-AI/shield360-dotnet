@@ -28,7 +28,16 @@ public class DefendTests
     private static readonly byte[] s_secret = Encoding.ASCII.GetBytes("0123456789abcdef0123456789abcdef");
     private static readonly string s_secretText = TestKey.B64(s_secret);
 
-    private static string Repo => Path.GetFullPath(Path.Combine(RaspCorpus.RaspDir, "..", ".."));
+    // SHIELD: the monorepo root (sdk/rasp/../..), or the mirror root (rasp/..) where
+    // .github/scripts/mirror-sdk.sh ships cli/internal/coding/injection.
+    private static string Repo
+    {
+        get
+        {
+            var mono = Path.GetFullPath(Path.Combine(RaspCorpus.RaspDir, "..", ".."));
+            return Directory.Exists(Path.Combine(mono, "cli", "internal", "coding")) ? mono : Path.GetFullPath(Path.Combine(RaspCorpus.RaspDir, ".."));
+        }
+    }
 
     private static DefendRequest Req(string ip, string method = "GET", string target = "/", string? ua = "Mozilla/5.0 (Macintosh) Chrome/120.0 Safari/537.36")
     {

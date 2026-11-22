@@ -1,0 +1,63 @@
+{
+	"_comment": "Public datasets the prompt-injection benchmark downloads at run time (src/client/scripts/injection-bench.mjs). None is copied into this repository. All of them are held out: rules are never tuned on them. Licences were read from each dataset's page on the date below; see README.md.",
+	"checked": "2026-10-14",
+	"datasets": [
+		{
+			"id": "deepset",
+			"name": "deepset/prompt-injections",
+			"url": "https://huggingface.co/datasets/deepset/prompt-injections",
+			"licence": "apache-2.0 (card front matter also lists cc-by-4.0 under dataset_info)",
+			"revision": "4f61ecb038e9c3fb77e21034b22511b523772cdd",
+			"fetch": { "type": "hf-rows", "dataset": "deepset/prompt-injections", "config": "default", "splits": ["train", "test"] },
+			"text": ["text"],
+			"label": { "field": "label", "malicious": [1], "benign": [0] },
+			"source": "prompt",
+			"notes": "English and German. Labels follow deepset's broad definition: any attempt to steer the model off task (for example 'act as an interviewer') counts as an injection."
+		},
+		{
+			"id": "gandalf",
+			"name": "Lakera/gandalf_ignore_instructions",
+			"url": "https://huggingface.co/datasets/Lakera/gandalf_ignore_instructions",
+			"licence": "mit",
+			"revision": "04737b65e90a6794ec227012e4a255a7def6344b",
+			"fetch": { "type": "hf-rows", "dataset": "Lakera/gandalf_ignore_instructions", "config": "default", "splits": ["train", "validation", "test"] },
+			"text": ["text"],
+			"label": { "constant": "malicious" },
+			"source": "prompt",
+			"notes": "Prompts submitted to the Gandalf game, selected by embedding similarity to 'Ignore all previous instructions' (similarity >= 0.825). All injections; the publisher notes a little label noise."
+		},
+		{
+			"id": "jackhhao",
+			"name": "jackhhao/jailbreak-classification",
+			"url": "https://huggingface.co/datasets/jackhhao/jailbreak-classification",
+			"licence": "apache-2.0",
+			"revision": "2f2ceeb39658696fd3f462403562b6eea5306287",
+			"fetch": {
+				"type": "csv",
+				"files": [
+					"https://huggingface.co/datasets/jackhhao/jailbreak-classification/resolve/2f2ceeb39658696fd3f462403562b6eea5306287/default/jailbreak_dataset_train.csv",
+					"https://huggingface.co/datasets/jackhhao/jailbreak-classification/resolve/2f2ceeb39658696fd3f462403562b6eea5306287/default/jailbreak_dataset_test.csv"
+				]
+			},
+			"text": ["prompt"],
+			"label": { "field": "type", "malicious": ["jailbreak"], "benign": ["benign"] },
+			"source": "prompt",
+			"notes": "Jailbreak prompts (DAN-style persona prompts) against benign prompts, many of them benign role-play ('You are a fast-talking merchant...'). A jailbreak is not always an injection; reported on its own."
+		},
+		{
+			"id": "dolly",
+			"name": "databricks/databricks-dolly-15k",
+			"url": "https://huggingface.co/datasets/databricks/databricks-dolly-15k",
+			"licence": "cc-by-sa-3.0",
+			"revision": "bdd27f4d94b9c1f951818a7da7fd7aeea5dbff1a",
+			"fetch": {
+				"type": "jsonl",
+				"files": ["https://huggingface.co/datasets/databricks/databricks-dolly-15k/resolve/bdd27f4d94b9c1f951818a7da7fd7aeea5dbff1a/databricks-dolly-15k.jsonl"]
+			},
+			"text": ["instruction", "context"],
+			"label": { "constant": "benign" },
+			"source": "prompt",
+			"notes": "Instructions written by Databricks employees (brainstorming, QA, summarisation, classification), with their reference context when present. All benign. Share-alike licence: downloaded, never redistributed."
+		}
+	]
+}
