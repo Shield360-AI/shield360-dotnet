@@ -54,6 +54,9 @@ internal sealed class RemoteConfig
 
     /// <summary>SHIELD: uploads — the signed config's uploads block, read (null when absent).</summary>
     public UploadPolicy? Uploads { get; init; }
+
+    /// <summary>SHIELD: AI attack agents — the signed attackAgents block, read; null when absent or not an object (the local option).</summary>
+    public AttackAgentConfig? AttackAgents { get; init; }
 }
 
 /// <summary>One reported record: <c>{ name, time, attrs }</c>.</summary>
@@ -77,7 +80,11 @@ internal enum RaspDecision
 /// (request capture runs before the middleware enters it), so custom finding rules still see the
 /// request and share its work budget.
 /// </remarks>
-internal sealed record FindingExtra(string? Framework = null, string? Route = null, string? Method = null, string? Path = null, RaspContext? Context = null);
+internal sealed record FindingExtra(string? Framework = null, string? Route = null, string? Method = null, string? Path = null, RaspContext? Context = null)
+{
+    /// <summary>SHIELD: AI attack agents — the client kind and reason an ai_attack_agent event carries.</summary>
+    public AttackMark? Agent { get; init; }
+}
 
 /// <summary>The engine's local settings.</summary>
 internal sealed record EngineSettings(
@@ -88,7 +95,8 @@ internal sealed record EngineSettings(
     RaspAllowOptions? Allow = null,
     bool ModelOutput = true,
     bool MonitorOnly = false,
-    Func<string, string?>? Env = null);
+    Func<string, string?>? Env = null,
+    AttackAgentConfig? AttackAgents = null);
 
 /// <summary>
 /// The RASP engine: the effective mode of each attack type (local options, the
@@ -109,6 +117,7 @@ internal static class RaspEngine
         public RaspMode Mode = RaspMode.Monitor;
         public Dictionary<RaspAttackType, RaspMode> Attacks = new();
         public RaspAllow Allow = RaspAllow.Empty;
+        public AttackAgentConfig AttackAgents = AttackAgentConfig.Default; // SHIELD: AI attack agents
     }
 
     private static Local s_local = new();
@@ -136,6 +145,7 @@ internal static class RaspEngine
             Mode = s.Mode ?? (env is RaspMode.Block or RaspMode.Monitor ? env.Value : RaspMode.Monitor),
             Attacks = s.Attacks is null ? new Dictionary<RaspAttackType, RaspMode>() : new Dictionary<RaspAttackType, RaspMode>(s.Attacks),
             Allow = new RaspAllow(Strings(s.Allow?.Commands), Strings(s.Allow?.OutboundHosts), Strings(s.Allow?.FileRoots)),
+            AttackAgents = s.AttackAgents ?? AttackAgentConfig.Default,
         };
         local.Enabled = s.Enabled && !local.EnvOff;
         Volatile.Write(ref s_runtimeDisabled, 0);
@@ -381,7 +391,99 @@ internal static class RaspEngine
         }
 
         var decision = mode == RaspMode.Block && !RaspNames.MonitorOnly(f.Attack) ? RaspDecision.Blocked : RaspDecision.Monitored;
+
+        // SHIELD: AI attack agents — a finding feeds the client's behavior score; a block's 403 is never an auth failure.
+        if (edgeCtx is not null)
+        {
+            if (!s_agentExcluded.Contains(f.Attack))
+            {
+                edgeCtx.AgentFinding = true;
+            }
+
+            if (decision == RaspDecision.Blocked)
+            {
+                edgeCtx.OwnBlock = true;
+            }
+        }
+
         var eventId = NewEventId();
+        Emit(f, sink, extra, decision, mode, eventId, tightened);
+
+        SendVerdict(edgeCtx, f, decision);
+
+        // Custom rules that look at built-in findings; the first blocking decision wins, the built-in one first.
+        var custom = f.Attack == RaspAttackType.CustomRule ? null : RunFindingRules(f, sink, extra);
+        if (decision == RaspDecision.Blocked)
+        {
+            throw new Shield360RaspBlockedException(f.Attack, f.Rule, eventId);
+        }
+
+        if (custom is not null)
+        {
+            throw custom;
+        }
+
+        return decision;
+    }
+
+    /// <summary>SHIELD: AI attack agents — findings of these types do not add to the behavior score.</summary>
+    private static readonly HashSet<RaspAttackType> s_agentExcluded = new() { RaspAttackType.AiAttackAgent, RaspAttackType.Deception, RaspAttackType.Baseline };
+
+    /// <summary>SHIELD: AI attack agents — the settings in force: the signed config's block, else the local option.</summary>
+    public static AttackAgentConfig AgentConfig() => Remote?.AttackAgents ?? Volatile.Read(ref s_local).AttackAgents;
+
+    /// <summary>
+    /// SHIELD: AI attack agents — reports a mark or a marked client's request (attack
+    /// <c>ai_attack_agent</c>, sink <c>http.attack_agent</c>, no input) with the client kind and
+    /// reason, and returns its event id. Never throws.
+    /// </summary>
+    public static string ReportAttackAgent(string rule, bool block, FindingExtra extra, AttackMark mark)
+    {
+        var eventId = NewEventId();
+        Emit(
+            new RaspFinding(RaspAttackType.AiAttackAgent, rule),
+            RaspAttackAgents.Sink,
+            extra with { Agent = mark },
+            block ? RaspDecision.Blocked : RaspDecision.Monitored,
+            block ? RaspMode.Block : RaspMode.Monitor,
+            eventId,
+            tightened: false);
+        return eventId;
+    }
+
+    /// <summary>
+    /// SHIELD: AI attack agents — tells Edge to block a marked client: a signed verdict with the
+    /// client kind as category and the mark's TTL. Needs a verified Edge context and an open
+    /// response; replaces a flag verdict set earlier in the request. Never throws.
+    /// </summary>
+    public static void SendAgentVerdict(string kind, int ttlSeconds, RaspContext? ctx)
+    {
+        try
+        {
+            var keys = EdgeKeys;
+            if (ctx?.Edge is null || ctx.SetHeader is null || keys.Count == 0)
+            {
+                return;
+            }
+
+            var v = EdgeContext.SignVerdict(keys, ctx.Edge.Rid, "block", kind, "rasp", ttlSeconds, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            if (v is null)
+            {
+                return;
+            }
+
+            ctx.SetHeader(EdgeContext.VerdictHeader, v);
+            ctx.VerdictSent = true;
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            // reporting to Edge never breaks the call
+        }
+    }
+
+    /// <summary>Builds and queues one event. Never throws.</summary>
+    private static void Emit(RaspFinding f, string sink, FindingExtra? extra, RaspDecision decision, RaspMode mode, string eventId, bool tightened)
+    {
         try
         {
             var x = extra ?? new FindingExtra();
@@ -439,6 +541,14 @@ internal static class RaspEngine
             }
 
             RaspUploads.AddAttrs(attrs, f); // SHIELD: uploads — README "Upload event attributes"
+
+            // SHIELD: AI attack agents — the client kind and the reason it was marked.
+            if (x.Agent is { } agent && f.Attack == RaspAttackType.AiAttackAgent)
+            {
+                attrs["shield360.rasp.client_kind"] = agent.Kind;
+                attrs["shield360.rasp.reason"] = agent.Reason;
+            }
+
             var time = DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
             var foldKey = string.Join("\u0000", RaspNames.Of(f.Attack), f.Rule, sink, route, decisionName);
             Volatile.Read(ref s_sink)?.Add(new RaspEvent("shield360.rasp.event", time, attrs), foldKey);
@@ -447,22 +557,6 @@ internal static class RaspEngine
         {
             // reporting never breaks the call
         }
-
-        SendVerdict(edgeCtx, f, decision);
-
-        // Custom rules that look at built-in findings; the first blocking decision wins, the built-in one first.
-        var custom = f.Attack == RaspAttackType.CustomRule ? null : RunFindingRules(f, sink, extra);
-        if (decision == RaspDecision.Blocked)
-        {
-            throw new Shield360RaspBlockedException(f.Attack, f.Rule, eventId);
-        }
-
-        if (custom is not null)
-        {
-            throw custom;
-        }
-
-        return decision;
     }
 
     /// <summary>

@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 
@@ -46,6 +47,12 @@ public sealed class ClientSignals
 
     /// <summary>Distinct path prefixes this client reached in the last minute (0: unknown).</summary>
     public int Breadth { get; set; }
+
+    /// <summary>
+    /// SHIELD: AI attack agents — the client's RASP mark (<c>ai_attack_agent</c> or <c>scanner</c>),
+    /// when it has one (sdk/rasp/README.md "AI attack agents").
+    /// </summary>
+    public string? AttackMark { get; set; }
 }
 
 /// <summary>A client type with its reasons and confidence (low, medium, high).</summary>
@@ -59,7 +66,7 @@ public sealed class ClientClassification
         Confidence = confidence;
     }
 
-    /// <summary>human, verified_agent, unverified_automation or suspected_ai_agent.</summary>
+    /// <summary>human, verified_agent, unverified_automation, suspected_ai_agent, ai_attack_agent or scanner.</summary>
     public string ClientType { get; }
 
     /// <summary>Short codes (<c>ua_ai_agent:claude-user</c>), never a header value.</summary>
@@ -89,11 +96,20 @@ public static class ClientType
     /// <summary>A trap hit, an AI agent's own name, an agent framework, or automation that roams widely.</summary>
     public const string SuspectedAiAgent = "suspected_ai_agent";
 
+    /// <summary>
+    /// An autonomous pentest agent: its own header, or a RASP mark (sdk/rasp/README.md "AI attack
+    /// agents"). A subtype of <see cref="UnverifiedAutomation"/> in rules.
+    /// </summary>
+    public const string AiAttackAgent = "ai_attack_agent";
+
+    /// <summary>An attack tool's User-Agent (sqlmap, nuclei, ffuf...). A subtype of <see cref="UnverifiedAutomation"/> in rules.</summary>
+    public const string Scanner = "scanner";
+
     /// <summary>Distinct path prefixes in a minute that make automation an AI agent.</summary>
     public const int BreadthAgent = 30;
 
     /// <summary>Every client type.</summary>
-    public static readonly IReadOnlyList<string> Types = new[] { Human, VerifiedAgent, UnverifiedAutomation, SuspectedAiAgent };
+    public static readonly IReadOnlyList<string> Types = new[] { Human, VerifiedAgent, UnverifiedAutomation, SuspectedAiAgent, AiAttackAgent, Scanner };
 
     private const string Resource = "Shield360.Defend.client-type-signatures.json";
     private static readonly Dictionary<string, List<KeyValuePair<string, string>>> s_sigs = Load(out s_version);
@@ -128,7 +144,7 @@ public static class ClientType
                 version = v.GetString() ?? string.Empty;
             }
 
-            foreach (var k in new[] { "aiAgents", "aiCrawlers", "agentFrameworks", "automation", "headless" })
+            foreach (var k in new[] { "aiAgents", "aiCrawlers", "agentFrameworks", "automation", "headless", "attackTools", "attackAgentHeaders" })
             {
                 var list = new List<KeyValuePair<string, string>>();
                 if (root.TryGetProperty(k, out var arr) && arr.ValueKind == JsonValueKind.Array)
@@ -170,6 +186,112 @@ public static class ClientType
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// SHIELD: AI attack agents — whether a rule's client types cover a classified client.
+    /// <see cref="Scanner"/> and <see cref="AiAttackAgent"/> are subtypes of
+    /// <see cref="UnverifiedAutomation"/>: a rule naming unverified_automation still matches attack
+    /// tools; a rule naming a subtype matches only it.
+    /// </summary>
+    public static bool RuleMatches(IReadOnlyList<string> ruleTypes, string? clientType)
+    {
+        if (ruleTypes is null || string.IsNullOrEmpty(clientType))
+        {
+            return false;
+        }
+
+        if (ruleTypes.Contains(clientType!))
+        {
+            return true;
+        }
+
+        return (clientType == Scanner || clientType == AiAttackAgent) && ruleTypes.Contains(UnverifiedAutomation);
+    }
+
+    // The first attack agent header entry a request carries: a header named `match`, or starting with it when it ends in `-`.
+    private static string? AgentHeader(IReadOnlyDictionary<string, string> headers)
+    {
+        if (!s_sigs.TryGetValue("attackAgentHeaders", out var sigs) || sigs.Count == 0)
+        {
+            return null;
+        }
+
+        var names = new List<string>(headers.Count);
+        foreach (var k in headers.Keys)
+        {
+            names.Add(AsciiLower(k));
+        }
+
+        foreach (var s in sigs)
+        {
+            if (s.Value.Length == 0)
+            {
+                continue;
+            }
+
+            var prefix = s.Value.EndsWith("-", StringComparison.Ordinal);
+            foreach (var n in names)
+            {
+                if (n == s.Value || (prefix && n.StartsWith(s.Value, StringComparison.Ordinal)))
+                {
+                    return s.Key;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    // The User-Agent, cut at 512 characters (never inside a surrogate pair), ASCII lower-case; empty when absent.
+    private static string UserAgent(IReadOnlyDictionary<string, string> headers)
+    {
+        var raw = string.Empty;
+        if (headers.TryGetValue("user-agent", out var u))
+        {
+            raw = u ?? string.Empty;
+        }
+        else
+        {
+            foreach (var kv in headers)
+            {
+                if (string.Equals(kv.Key, "user-agent", StringComparison.OrdinalIgnoreCase))
+                {
+                    raw = kv.Value ?? string.Empty;
+                    break;
+                }
+            }
+        }
+
+        if (raw.Length > 512)
+        {
+            var cut = 512;
+            if (char.IsLowSurrogate(raw[cut]))
+            {
+                cut--;
+            }
+
+            raw = raw.Substring(0, cut);
+        }
+
+        return AsciiLower(raw);
+    }
+
+    /// <summary>
+    /// SHIELD: AI attack agents — what a request's headers say about an attack agent
+    /// (sdk/rasp/README.md "AI attack agents", "Fingerprint"): an agent's own header gives
+    /// <see cref="AiAttackAgent"/>, else an attack tool's User-Agent gives <see cref="Scanner"/>, with
+    /// the signature id; null when neither.
+    /// </summary>
+    internal static (string Kind, string Id)? AttackFingerprint(IReadOnlyDictionary<string, string> headers)
+    {
+        if (AgentHeader(headers) is { } h)
+        {
+            return (AiAttackAgent, h);
+        }
+
+        var ua = UserAgent(headers);
+        return ua.Length > 0 && Find(ua, "attackTools") is { } t ? (Scanner, t) : null;
     }
 
     private static bool HasChromeVersion(string ua)
@@ -229,6 +351,28 @@ public static class ClientType
         if (ct == "verified_agent" || ct == "verified_crawler")
         {
             return new ClientClassification(VerifiedAgent, new[] { "edge:" + ct }, "high");
+        }
+
+        // SHIELD: AI attack agents — an attack agent's own header, a RASP mark, then an attack tool's
+        // User-Agent (tool-only evidence stays scanner).
+        if (AgentHeader(headers) is { } header)
+        {
+            return new ClientClassification(AiAttackAgent, new[] { "attack_agent_header:" + header }, "high");
+        }
+
+        if (s.AttackMark == AiAttackAgent)
+        {
+            return new ClientClassification(AiAttackAgent, new[] { "attack_mark:ai_attack_agent" }, "high");
+        }
+
+        if (ua.Length > 0 && Find(ua, "attackTools") is { } tool)
+        {
+            return new ClientClassification(Scanner, new[] { "ua_attack_tool:" + tool }, "high");
+        }
+
+        if (s.AttackMark == Scanner)
+        {
+            return new ClientClassification(Scanner, new[] { "attack_mark:scanner" }, "high");
         }
 
         if (s.TrapHit)

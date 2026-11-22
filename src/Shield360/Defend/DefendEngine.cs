@@ -308,7 +308,8 @@ internal static class DefendEngine
             return false;
         }
 
-        if (r.ClientTypes.Count > 0 && (input.Classification is null || !r.ClientTypes.Contains(input.Classification.ClientType)))
+        // SHIELD: AI attack agents — scanner and ai_attack_agent are subtypes of unverified_automation.
+        if (r.ClientTypes.Count > 0 && !ClientType.RuleMatches(r.ClientTypes, input.Classification?.ClientType))
         {
             return false;
         }

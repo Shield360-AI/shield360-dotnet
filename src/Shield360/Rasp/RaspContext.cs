@@ -113,6 +113,31 @@ internal sealed class RaspContext
 
     public bool VerdictSent { get; set; }
 
+    /// <summary>SHIELD: AI attack agents — the signed-in user the app named (<c>Shield360Rasp.IdentifyUser</c>).</summary>
+    public string? User { get; set; }
+
+    /// <summary>SHIELD: AI attack agents — a RASP finding (other than ai_attack_agent, deception, baseline) happened in this request.</summary>
+    public bool AgentFinding { get; set; }
+
+    /// <summary>SHIELD: AI attack agents — Shield360 answered this request itself (a block): its status is never scored.</summary>
+    public bool OwnBlock { get; set; }
+
+    /// <summary>SHIELD: AI attack agents — the before-handler check ran.</summary>
+    public bool AgentsChecked { get; set; }
+
+    private int _agentsScored;
+
+    /// <summary>SHIELD: AI attack agents — claims the after-handler scoring; true only the first time.</summary>
+    public bool ClaimAgentsScoring() => Interlocked.Exchange(ref _agentsScored, 1) == 0;
+
+    /// <summary>SHIELD: AI attack agents — the headers and client address the after-handler scoring uses.</summary>
+    public IReadOnlyDictionary<string, string>? AgentHeaders { get; set; }
+
+    public string? AgentIp { get; set; }
+
+    /// <summary>SHIELD: AI attack agents — left alone: Edge verified the client, or a red team run sent it.</summary>
+    public bool AgentLeftAlone { get; set; }
+
     /// <summary>The route template, resolved now if it was deferred.</summary>
     public string? ResolvedRoute()
     {

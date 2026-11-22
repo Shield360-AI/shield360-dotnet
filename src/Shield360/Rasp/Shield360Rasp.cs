@@ -97,4 +97,12 @@ public static partial class Shield360Rasp
     /// <c>JsonNode</c>) as untrusted input, keyed <c>model.tool.&lt;toolName&gt;.&lt;path&gt;</c>. Never throws.
     /// </summary>
     public static void RecordToolArguments(object? arguments, string? toolName = null) => RaspModelOutput.RecordToolArguments(arguments, toolName);
+
+    /// <summary>
+    /// SHIELD: AI attack agents (sdk/rasp/README.md "AI attack agents") — names the signed-in user of
+    /// the current request, so the behavior score also follows the user across addresses. Call it
+    /// from the app's authentication once the user is known. 1 to 128 characters; anything else is
+    /// ignored. Never throws.
+    /// </summary>
+    public static void IdentifyUser(string? id) => RaspAgents.IdentifyUser(id);
 }

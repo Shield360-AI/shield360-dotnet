@@ -37,6 +37,7 @@ public sealed class Shield360RaspMiddleware
     public const int MaxBodyBytes = 1024 * 1024;
 
     private static readonly object s_captured = new();
+    private static readonly object s_ownBlock = new(); // SHIELD: AI attack agents — the response is Shield360's own block
     private readonly RequestDelegate _next;
     private readonly bool _deferDecoys;
 
@@ -92,11 +93,35 @@ public sealed class Shield360RaspMiddleware
             return;
         }
 
-        // Deception runs first, before capture, virtual patches and body buffering (README "Deception").
-        if (RaspEngine.Remote?.Deception is not null)
+        // SHIELD: AI attack agents — the tripwire URL is answered first, then deception (README "AI attack agents").
+        var verdict = DeceptionVerdict.Pass;
+        Shield360RaspBlockedException? deceptionBlock = null;
+        string? tripwirePage = null;
+        if (RaspEngine.AgentConfig().Tripwire && RaspAgents.CheckTripwire(Early(context), out var deter))
         {
-            switch (Deceive(context, out var deceptionBlock))
+            verdict = deter is null ? DeceptionVerdict.NotFound : DeceptionVerdict.Block;
+            deceptionBlock = deter;
+        }
+        else if (RaspEngine.Remote?.Deception is not null)
+        {
+            // Deception runs first, before capture, virtual patches and body buffering (README "Deception").
+            verdict = Deceive(context, out deceptionBlock);
+
+            // SHIELD: AI attack agents — a decoy hit adds to the behavior score; the 404 may carry the tripwire page.
+            if (verdict == DeceptionVerdict.NotFound)
             {
+                tripwirePage = RaspAgents.Decoy(Early(context));
+            }
+        }
+
+        if (verdict != DeceptionVerdict.Pass)
+        {
+            switch (verdict)
+            {
+                case DeceptionVerdict.NotFound when tripwirePage is not null:
+                    context.Items[s_captured] = true;
+                    await WriteTripwirePageAsync(context, tripwirePage).ConfigureAwait(false);
+                    return;
                 case DeceptionVerdict.NotFound when _deferDecoys:
                     // Ahead of the app's middleware: routing matches no endpoint for the decoy, so
                     // the app answers it as it answers an unknown path (its status code pages too).
@@ -120,7 +145,8 @@ public sealed class Shield360RaspMiddleware
         RaspContext? ctx;
         try
         {
-            ctx = RaspCapture.CaptureRequest(Shape(context));
+            var shape = Shape(context);
+            ctx = RaspCapture.CaptureRequest(shape);
 
             // SHIELD: protection triangle — a verdict for Edge goes out as a response header while the headers are not sent.
             var response = context.Response;
@@ -131,6 +157,18 @@ public sealed class Shield360RaspMiddleware
                     response.Headers[name] = value;
                 }
             };
+
+            // SHIELD: AI attack agents — the request is scored when its status goes out, while a mark can still set the verdict header.
+            var agents = RaspEngine.ModeFor(RaspAttackType.AiAttackAgent) != RaspMode.Off;
+            if (agents)
+            {
+                var scored = ctx;
+                response.OnStarting(() =>
+                {
+                    RaspAgents.After(scored, response.StatusCode, context.Items.ContainsKey(s_ownBlock));
+                    return Task.CompletedTask;
+                });
+            }
             ctx.RouteSource = () => RouteTemplate(context);
             RaspClientAddress.Attach(ctx, context);
             ctx.Late = () =>
@@ -169,6 +207,12 @@ public sealed class Shield360RaspMiddleware
                 RaspCapture.CaptureEmptyBody(ctx);
             }
 
+            // SHIELD: AI attack agents — once the inputs are known, before the body patches: a marked client is deterred here.
+            if (agents)
+            {
+                RaspAgents.Before(ctx, shape.Headers, RaspClientAddress.Settled(context));
+            }
+
             RaspCapture.RunVirtualPatches(ctx);
         }
         catch (Shield360RaspBlockedException e)
@@ -182,18 +226,74 @@ public sealed class Shield360RaspMiddleware
             ctx = null;
         }
 
-        if (ctx is not null)
+        if (ctx is null)
         {
-            // Async-local: the endpoint and everything it awaits see this request's context.
-            RaspScope.Enter(ctx);
+            await PassAsync(context).ConfigureAwait(false);
+            return;
+        }
+
+        // Async-local: the endpoint and everything it awaits see this request's context.
+        RaspScope.Enter(ctx);
+        try
+        {
             if (WantsXssCheck())
             {
                 await PassCheckingXssAsync(context).ConfigureAwait(false);
-                return;
+            }
+            else
+            {
+                await PassAsync(context).ConfigureAwait(false);
             }
         }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // SHIELD: AI attack agents — an exception nothing inside answered is a server error (no
+            // status goes out for it here when no exception handler wraps the pipeline).
+            RaspAgents.After(ctx, StatusCodes.Status500InternalServerError, context.Items.ContainsKey(s_ownBlock));
+            throw;
+        }
 
-        await PassAsync(context).ConfigureAwait(false);
+        // SHIELD: AI attack agents — a response with no body yet is scored here (a no-op when it already was).
+        RaspAgents.After(ctx, context.Response.StatusCode, context.Items.ContainsKey(s_ownBlock));
+    }
+
+    /// <summary>SHIELD: AI attack agents — what the tripwire and the decoy scoring need of a request, before capture.</summary>
+    private static AgentEarlyRequest Early(HttpContext context)
+    {
+        var request = context.Request;
+        var raw = context.Features.Get<IHttpRequestFeature>()?.RawTarget;
+        var url = !string.IsNullOrEmpty(raw) && raw![0] == '/'
+            ? raw
+            : request.PathBase.ToUriComponent() + request.Path.ToUriComponent() + request.QueryString.ToUriComponent();
+        return new AgentEarlyRequest
+        {
+            Framework = Framework,
+            Method = request.Method,
+            Url = url,
+            Ip = () => RaspClientAddress.Settled(context),
+            Header = name => request.Headers.TryGetValue(name, out var v) ? v.ToString() : null,
+        };
+    }
+
+    /// <summary>SHIELD: AI attack agents — the decoy's 404 with the LLM tripwire page (README "AI attack agents").</summary>
+    private static async Task WriteTripwirePageAsync(HttpContext context, string page)
+    {
+        var response = context.Response;
+        if (response.HasStarted)
+        {
+            return;
+        }
+
+        var bytes = System.Text.Encoding.UTF8.GetBytes(page);
+        response.Clear();
+        response.StatusCode = StatusCodes.Status404NotFound;
+        response.ContentType = "text/html; charset=utf-8";
+        response.Headers.CacheControl = "no-store";
+        response.ContentLength = bytes.Length;
+        if (!HttpMethods.IsHead(context.Request.Method))
+        {
+            await response.Body.WriteAsync(bytes, context.RequestAborted).ConfigureAwait(false);
+        }
     }
 
     /// <summary>
@@ -325,7 +425,10 @@ public sealed class Shield360RaspMiddleware
         return null;
     }
 
-    /// <summary>Writes the contract's 403 (no-op once the response has started).</summary>
+    /// <summary>
+    /// Writes the contract's 403, or the deter answer's 429 with <c>Retry-After</c> for an AI attack
+    /// agent (no-op once the response has started). A verdict for Edge set earlier in the request stays.
+    /// </summary>
     internal static async Task WriteBlockedAsync(HttpContext context, Shield360RaspBlockedException e)
     {
         var response = context.Response;
@@ -334,8 +437,23 @@ public sealed class Shield360RaspMiddleware
             return;
         }
 
+        // SHIELD: AI attack agents — Shield360's own answer is never scored as the app's.
+        context.Items[s_ownBlock] = true;
+
+        // SHIELD: protection triangle — the signed verdict survives the reset of the response.
+        var verdict = response.Headers[EdgeContext.VerdictHeader];
         response.Clear();
-        response.StatusCode = StatusCodes.Status403Forbidden;
+        if (!Microsoft.Extensions.Primitives.StringValues.IsNullOrEmpty(verdict))
+        {
+            response.Headers[EdgeContext.VerdictHeader] = verdict;
+        }
+
+        response.StatusCode = e.StatusCode;
+        if (e.RetryAfterSeconds is { } retryAfter)
+        {
+            response.Headers.RetryAfter = retryAfter.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
         response.ContentType = "application/json";
         response.Headers.CacheControl = "no-store";
         await response.WriteAsync(e.ToResponseJson(), context.RequestAborted).ConfigureAwait(false);

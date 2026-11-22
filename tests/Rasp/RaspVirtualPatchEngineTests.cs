@@ -48,6 +48,7 @@ public abstract class RaspStateTest : IDisposable
         RaspEngine.SetEventSink(null);
         RaspIast.Reset();
         RaspCustomRules.ResetWarnings();
+        RaspAttackAgents.Tracker = new AttackAgentTracker();
         RaspScope.Enter(null);
     }
 

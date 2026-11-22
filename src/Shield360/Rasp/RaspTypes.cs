@@ -84,6 +84,13 @@ public enum RaspAttackType
 
     /// <summary><c>upload_backdoor</c>: an uploaded file saved where it runs, loaded, run or made executable (README "Backdoor checks").</summary>
     UploadBackdoor,
+
+    /// <summary>
+    /// <c>ai_attack_agent</c>: autonomous pentest agents and attack tools (README "AI attack agents"): a
+    /// fingerprint, an OAST callback domain, the in-app behavior score, the opt-in LLM tripwire. Block
+    /// answers a marked client with a 429 and Retry-After.
+    /// </summary>
+    AiAttackAgent,
 }
 
 /// <summary>Where a piece of untrusted input came from.</summary>
@@ -141,7 +148,7 @@ internal static class RaspNames
     {
         "sql_injection", "nosql_injection", "command_injection", "shell_spawn", "path_traversal", "file_write",
         "ssrf", "outbound", "deserialization", "code_injection", "xxe", "xss", "virtual_patch", "baseline", "custom_rule",
-        "deception", "malicious_upload", "upload_backdoor",
+        "deception", "malicious_upload", "upload_backdoor", "ai_attack_agent",
     };
 
     private static readonly Dictionary<string, RaspAttackType> s_byName = Build();

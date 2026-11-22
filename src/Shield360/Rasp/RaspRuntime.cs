@@ -179,6 +179,7 @@ internal static class RaspRuntime
             Deception = RaspDeception.Parse(j.TryGetProperty("deception", out var deception) ? deception : null),
             EdgeKeys = EdgeContext.ParseKeys(j.TryGetProperty("edgeContext", out var edgeContext) ? edgeContext : null),
             Uploads = j.TryGetProperty("uploads", out var uploads) ? UploadPolicy.Parse(uploads) : null, // SHIELD: uploads
+            AttackAgents = RaspAttackAgents.ParseSigned(j.TryGetProperty("attackAgents", out var agents) ? agents : null), // SHIELD: AI attack agents
         };
     }
 
@@ -281,7 +282,8 @@ internal static class RaspRuntime
 
                 // No pinned key while a remote config was expected: built-in defaults, monitor only.
                 MonitorOnly: unpinned,
-                Env: env));
+                Env: env,
+                AttackAgents: RaspAttackAgents.ParseJson(o.AttackAgents))); // SHIELD: AI attack agents — the local option
             RaspEngine.AlwaysAllowedHosts = AlwaysAllowedHosts(new[] { ctx.Url, ctx.OtlpEndpoint });
 
             // SHIELD: uploads — the local policy, and the environment the reputation lookup uses.

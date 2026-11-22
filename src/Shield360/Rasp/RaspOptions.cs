@@ -95,6 +95,15 @@ public sealed class RaspOptions
 
     /// <summary>Where blocked uploads are moved (an absolute path; default the temp directory + shield360-quarantine).</summary>
     public string? QuarantineDir { get; set; }
+
+    /// <summary>
+    /// AI attack agents (sdk/rasp/README.md "AI attack agents"), used without a signed config: the
+    /// signed config's attackAgents block as JSON, for example
+    /// <c>{"threshold":20,"markTtlSeconds":1800,"retryAfterSeconds":300,"tripwire":false,"tripwirePath":"/_debug/console"}</c>.
+    /// Anything unusable is its default; the LLM tripwire is off unless <c>"tripwire": true</c>.
+    /// The mode is <c>Attacks[RaspAttackType.AiAttackAgent]</c> (default monitor).
+    /// </summary>
+    public string? AttackAgents { get; set; }
 }
 
 /// <summary>RASP allow-lists. The signed config's lists replace these when it sets them.</summary>

@@ -25,6 +25,21 @@ public sealed class Shield360RaspBlockedException : Exception
         EventId = eventId;
     }
 
+    /// <summary>
+    /// SHIELD: AI attack agents — the deter answer (sdk/rasp/README.md "AI attack agents"): a marked
+    /// client in block mode gets 429 with Retry-After instead of the 403, so agents that honor rate
+    /// limits give up. The middleware maps it like a block.
+    /// </summary>
+    internal Shield360RaspBlockedException(string rule, string eventId, int retryAfterSeconds)
+        : this(RaspAttackType.AiAttackAgent, rule, eventId)
+    {
+        StatusCode = 429;
+        RetryAfterSeconds = retryAfterSeconds;
+    }
+
+    /// <summary>The body message of the deter answer (429).</summary>
+    public const string DeterMessage = "Too Many Requests";
+
     /// <summary>The attack type.</summary>
     public RaspAttackType AttackType { get; }
 
@@ -37,15 +52,24 @@ public sealed class Shield360RaspBlockedException : Exception
     /// <summary>The reported event's id (32 hex characters).</summary>
     public string EventId { get; }
 
-    /// <summary>The HTTP status a block maps to: 403.</summary>
+    /// <summary>The HTTP status a block maps to: 403, or 429 for the deter answer to an AI attack agent.</summary>
     public int StatusCode { get; } = 403;
+
+    /// <summary>The deter answer's <c>Retry-After</c> in seconds (status 429); null for a block (403).</summary>
+    public int? RetryAfterSeconds { get; }
 
     /// <summary>
     /// The JSON body of the 403 (sdk/rasp/README.md, "The block response"):
-    /// <c>{"error":"…","attack":"…","rule":"…","event":"…"}</c>.
+    /// <c>{"error":"…","attack":"…","rule":"…","event":"…"}</c>; for the deter answer (429),
+    /// <c>{"error":"Too Many Requests"}</c>.
     /// </summary>
     public string ToResponseJson()
     {
+        if (StatusCode == 429)
+        {
+            return "{\"error\":\"" + DeterMessage + "\"}";
+        }
+
         using var stream = new MemoryStream();
         using (var w = new Utf8JsonWriter(stream))
         {
