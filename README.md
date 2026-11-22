@@ -11,7 +11,7 @@ OpenTelemetry-native AI observability for .NET. Shield360 collects GenAI traces,
 - **Feature flags** - evaluated locally with the same engine as the server and the other SDKs, with helpers for model choice, kill switches and Prompt Hub prompts.
 - **Runtime protection (RASP)** - opt-in: request and model-output input tracking, the shared detectors, virtual patches, a signed remote config and sink hooks (HttpClient, SqlClient, processes, files, XML, deserializers), with ASP.NET Core middleware in `Shield360.AspNetCore` and an EF Core interceptor in `Shield360.EntityFrameworkCore`.
 
-Full documentation: [.NET SDK overview](https://github.com/ThinkfleetAI/shield360-dotnet/blob/main/docs/dotnet-overview.mdx).
+Full documentation: [.NET SDK overview](https://github.com/Shield360-AI/shield360-dotnet/blob/main/docs/dotnet-overview.mdx).
 
 ## Requirements
 
