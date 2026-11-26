@@ -99,6 +99,9 @@ public sealed class DefendFacts
     /// <summary>Edge's verified context, when the request came through Edge.</summary>
     public EdgeSignal? Edge { get; set; }
 
+    /// <summary>SHIELD: decoy and trap verdicts — Edge's verified context itself (its request id and red team run).</summary>
+    internal EdgeRequestContext? EdgeVerified { get; set; }
+
     internal string Header(string name) => Headers.TryGetValue(name, out var v) ? v : string.Empty;
 
     internal static string Cut(string s, int max)

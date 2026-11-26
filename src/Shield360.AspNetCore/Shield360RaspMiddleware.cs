@@ -97,6 +97,7 @@ public sealed class Shield360RaspMiddleware
         var verdict = DeceptionVerdict.Pass;
         Shield360RaspBlockedException? deceptionBlock = null;
         string? tripwirePage = null;
+        string? decoyVerdict = null;
         if (RaspEngine.AgentConfig().Tripwire && RaspAgents.CheckTripwire(Early(context), out var deter))
         {
             verdict = deter is null ? DeceptionVerdict.NotFound : DeceptionVerdict.Block;
@@ -111,6 +112,13 @@ public sealed class Shield360RaspMiddleware
             if (verdict == DeceptionVerdict.NotFound)
             {
                 tripwirePage = RaspAgents.Decoy(Early(context));
+
+                // SHIELD: decoy and trap verdicts — behind Edge, the 404 tells every Edge to block (or mark) the client.
+                decoyVerdict = RaspAgents.DecoyVerdict(Early(context));
+                if (decoyVerdict is not null && !context.Response.HasStarted)
+                {
+                    context.Response.Headers[EdgeContext.VerdictHeader] = decoyVerdict;
+                }
             }
         }
 
@@ -120,7 +128,7 @@ public sealed class Shield360RaspMiddleware
             {
                 case DeceptionVerdict.NotFound when tripwirePage is not null:
                     context.Items[s_captured] = true;
-                    await WriteTripwirePageAsync(context, tripwirePage).ConfigureAwait(false);
+                    await WriteTripwirePageAsync(context, tripwirePage, decoyVerdict).ConfigureAwait(false);
                     return;
                 case DeceptionVerdict.NotFound when _deferDecoys:
                     // Ahead of the app's middleware: routing matches no endpoint for the decoy, so
@@ -276,7 +284,7 @@ public sealed class Shield360RaspMiddleware
     }
 
     /// <summary>SHIELD: AI attack agents — the decoy's 404 with the LLM tripwire page (README "AI attack agents").</summary>
-    private static async Task WriteTripwirePageAsync(HttpContext context, string page)
+    private static async Task WriteTripwirePageAsync(HttpContext context, string page, string? verdict = null)
     {
         var response = context.Response;
         if (response.HasStarted)
@@ -289,6 +297,11 @@ public sealed class Shield360RaspMiddleware
         response.StatusCode = StatusCodes.Status404NotFound;
         response.ContentType = "text/html; charset=utf-8";
         response.Headers.CacheControl = "no-store";
+        if (verdict is not null)
+        {
+            response.Headers[EdgeContext.VerdictHeader] = verdict;
+        }
+
         response.ContentLength = bytes.Length;
         if (!HttpMethods.IsHead(context.Request.Method))
         {

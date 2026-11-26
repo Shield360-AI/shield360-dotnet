@@ -524,6 +524,9 @@ public sealed class Shield360Defend : IDisposable
 
         r.Reasons.AddRange(reasons);
         r.ClientType = ClientType.SuspectedAiAgent;
+
+        // SHIELD: decoy and trap verdicts — Edge blocks the client fleet-wide when this hit blocks, else marks it.
+        r.Verdict = EdgeContext.HitVerdict(p.EdgeKeys, f.EdgeVerified, ip, action == "block" && mode != DefendMode.Monitor ? "block" : "flag", "trap", "defend", ttl, NowMs() / 1000);
         if (decoy is not null)
         {
             r.Decoy = decoy;
@@ -541,7 +544,7 @@ public sealed class Shield360Defend : IDisposable
             return r;
         }
 
-        return new DefendResult(v, r.Reasons, r.RuleIds, ttl) { ClientType = r.ClientType };
+        return new DefendResult(v, r.Reasons, r.RuleIds, ttl) { ClientType = r.ClientType, Verdict = r.Verdict };
     }
 
     /// <summary>The decision for a request. Never throws.</summary>
@@ -604,6 +607,7 @@ public sealed class Shield360Defend : IDisposable
                 if (e is not null)
                 {
                     f.Edge = new EdgeSignal(e.ClientType, e.Trap, e.Flagged, e.Risk);
+                    f.EdgeVerified = e;
                 }
             }
         }
@@ -713,7 +717,18 @@ public sealed class Shield360Defend : IDisposable
 
             h["Content-Type"] = r.Decoy.ContentType;
             h["Cache-Control"] = "no-store";
+            if (r.Verdict is not null)
+            {
+                h[EdgeContext.VerdictHeader] = r.Verdict;
+            }
+
             return new DefendResponse(r.Decoy.Status, h, r.Decoy.Body);
+        }
+
+        // SHIELD: decoy and trap verdicts — Defend's own answer carries a trap hit's verdict.
+        if (r.Verdict is not null)
+        {
+            h[EdgeContext.VerdictHeader] = r.Verdict;
         }
 
         h["Content-Type"] = "application/json";

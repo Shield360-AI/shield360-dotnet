@@ -104,6 +104,12 @@ namespace Shield360.AspNetCore
                 context.Response.Headers[ClientCrumbs.HeaderName] = result.CrumbHeader;
             }
 
+            // SHIELD: decoy and trap verdicts — a monitored trap hit flags the client at Edge; RASP behind may replace it.
+            if (result.Verdict is not null && !context.Response.HasStarted)
+            {
+                context.Response.Headers["X-Shield360-Verdict"] = result.Verdict;
+            }
+
             context.Items[ResultKey] = result;
             await _next(context).ConfigureAwait(false);
         }

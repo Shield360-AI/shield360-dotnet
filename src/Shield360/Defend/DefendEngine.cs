@@ -128,6 +128,9 @@ public sealed class DefendResult
     /// <summary>The X-Debug-Trace value for an allowed response.</summary>
     public string? CrumbHeader { get; internal set; }
 
+    /// <summary>SHIELD: decoy and trap verdicts — the signed X-Shield360-Verdict a trap hit sends Edge, for the response (null: none).</summary>
+    public string? Verdict { get; internal set; }
+
     /// <summary>The decision as enforced, or as it would be outside monitor mode.</summary>
     public DefendVerdict Effective => WouldBe ?? Decision;
 

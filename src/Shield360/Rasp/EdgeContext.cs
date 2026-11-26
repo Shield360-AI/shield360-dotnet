@@ -339,6 +339,26 @@ internal static class EdgeContext
         }
     }
 
+    /// <summary>SHIELD: decoy and trap verdicts — the reserved test identity Edge's simulated hits use (TEST-NET-1): never blocked.</summary>
+    public const string SimulatedClient = "192.0.2.1";
+
+    /// <summary>
+    /// SHIELD: decoy and trap verdicts (edge-deception-spec "What each layer does") — the signed
+    /// verdict a decoy or trap hit sends Edge, for a request Edge's verified context names. Null
+    /// without a context, for a verified crawler or agent, a red team run (<c>rt</c>) or the
+    /// simulated client. Never throws.
+    /// </summary>
+    public static string? HitVerdict(IReadOnlyList<EdgeKey> keys, EdgeRequestContext? e, string? ip, string act, string cat, string src, long ttl, long iat)
+    {
+        if (e is null || keys.Count == 0 || e.ClientType == "verified_crawler" || e.ClientType == "verified_agent" || !string.IsNullOrEmpty(e.RedTeam))
+        {
+            return null;
+        }
+
+        var a = ip is not null && ip.StartsWith("::ffff:", StringComparison.Ordinal) ? ip.Substring(7) : ip;
+        return a == SimulatedClient ? null : SignVerdict(keys, e.Rid, act, cat, src, ttl, iat);
+    }
+
     /// <summary>A signed verdict for Edge with the current (first) key, or null.</summary>
     public static string? SignVerdict(IReadOnlyList<EdgeKey> keys, string rid, string act, string cat, string src, long ttl, long iat)
     {

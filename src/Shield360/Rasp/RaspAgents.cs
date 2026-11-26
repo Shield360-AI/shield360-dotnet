@@ -176,6 +176,31 @@ internal static class RaspAgents
     }
 
     /// <summary>
+    /// SHIELD: decoy and trap verdicts (README "Deception", "Protection triangle") — the verdict a
+    /// decoy hit's 404 carries: block when the decision is blocked (the config's action and
+    /// <c>attacks.deception</c>), else flag, for the deception TTL. Null without a verified context.
+    /// Never throws.
+    /// </summary>
+    public static string? DecoyVerdict(AgentEarlyRequest r)
+    {
+        try
+        {
+            var config = RaspEngine.Remote?.Deception;
+            if (config is null)
+            {
+                return null;
+            }
+
+            var block = config.Block && RaspEngine.ModeFor(RaspAttackType.Deception) == RaspMode.Block;
+            return EdgeContext.HitVerdict(RaspEngine.EdgeKeys, VerifiedEarly(r), r.Ip(), block ? "block" : "flag", "deception", "rasp", config.TtlSeconds, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Edge's context for an early request, verified without the replay cache: it only decides
     /// whether the request is left alone (no tripwire, no decoy scoring, no tripwire page), never
     /// what Edge is told.
