@@ -177,8 +177,8 @@ internal static class RaspAgents
 
     /// <summary>
     /// SHIELD: decoy and trap verdicts (README "Deception", "Protection triangle") — the verdict a
-    /// decoy hit's 404 carries: block when the decision is blocked (the config's action and
-    /// <c>attacks.deception</c>), else flag, for the deception TTL. Null without a verified context.
+    /// decoy hit's 404 carries: always block, whatever the app's own action (its answer to the
+    /// request is unchanged), for the deception TTL. Null without a verified context.
     /// Never throws.
     /// </summary>
     public static string? DecoyVerdict(AgentEarlyRequest r)
@@ -191,8 +191,7 @@ internal static class RaspAgents
                 return null;
             }
 
-            var block = config.Block && RaspEngine.ModeFor(RaspAttackType.Deception) == RaspMode.Block;
-            return EdgeContext.HitVerdict(RaspEngine.EdgeKeys, VerifiedEarly(r), r.Ip(), block ? "block" : "flag", "deception", "rasp", config.TtlSeconds, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            return EdgeContext.HitVerdict(RaspEngine.EdgeKeys, VerifiedEarly(r), r.Ip(), "block", "deception", "rasp", config.TtlSeconds, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         }
         catch (Exception e) when (e is not OutOfMemoryException)
         {

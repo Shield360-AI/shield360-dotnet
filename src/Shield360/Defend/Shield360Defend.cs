@@ -525,8 +525,8 @@ public sealed class Shield360Defend : IDisposable
         r.Reasons.AddRange(reasons);
         r.ClientType = ClientType.SuspectedAiAgent;
 
-        // SHIELD: decoy and trap verdicts — Edge blocks the client fleet-wide when this hit blocks, else marks it.
-        r.Verdict = EdgeContext.HitVerdict(p.EdgeKeys, f.EdgeVerified, ip, action == "block" && mode != DefendMode.Monitor ? "block" : "flag", "trap", "defend", ttl, NowMs() / 1000);
+        // SHIELD: decoy and trap verdicts — a trap hit always blocks the client fleet-wide at Edge, whatever the local action or mode.
+        r.Verdict = EdgeContext.HitVerdict(p.EdgeKeys, f.EdgeVerified, ip, "block", "trap", "defend", ttl, NowMs() / 1000);
         if (decoy is not null)
         {
             r.Decoy = decoy;

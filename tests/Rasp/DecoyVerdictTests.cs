@@ -98,13 +98,16 @@ public class DecoyVerdictTests : RaspStateTest
     }
 
     [Fact]
-    public async Task A_monitored_hit_flags_and_exempt_or_unverified_hits_send_nothing()
+    public async Task A_monitored_hit_still_blocks_at_Edge_and_exempt_or_unverified_hits_send_nothing()
     {
         Arm("monitor");
         await using (var web = await Serve())
         {
             var c = await Send(web, "/wp-admin", "203.0.113.8", new());
-            Assert.Contains("\"act\":\"flag\"", Payload(c.Response.Headers[EdgeContext.VerdictHeader].ToString()), StringComparison.Ordinal);
+            Assert.Equal(404, c.Response.StatusCode);
+            var mp = Payload(c.Response.Headers[EdgeContext.VerdictHeader].ToString());
+            Assert.Contains("\"act\":\"block\"", mp, StringComparison.Ordinal);
+            Assert.Contains("\"cat\":\"deception\"", mp, StringComparison.Ordinal);
         }
 
         Arm("block");
@@ -157,5 +160,26 @@ public class DecoyVerdictTests : RaspStateTest
         Assert.Null(Hit("198.51.100.33", new() { ["rt"] = "crun12345678" }).Verdict);
         Assert.Null(Hit(EdgeContext.SimulatedClient, new()).Verdict);
         Assert.Contains("trap:honeypot", Hit("198.51.100.34", null).Reasons);
+    }
+
+    [Theory]
+    [InlineData("monitor", false)]
+    [InlineData("block", true)]
+    public void A_Defend_trap_hit_in_monitor_still_blocks_at_Edge(string honeypotMode, bool monitorMode)
+    {
+        var secret = B64(Encoding.ASCII.GetBytes(Key));
+        var p = DefendPolicy.Parse("{\"version\":\"v1\",\"exp\":1e10,\"traps\":{\"action\":\"block\",\"ttlSeconds\":1800},\"honeypots\":{\"enabled\":true,\"mode\":\"" + honeypotMode + "\",\"secret\":\"" + secret + "\"},\"edgeContext\":{\"keys\":[{\"kid\":\"0a1b2c3d\",\"key\":\"" + secret + "\"}]}}")!;
+        using var d = Shield360Defend.Build(new DefendOptions { App = "shop", Policy = p, Mode = monitorMode ? DefendMode.Monitor : DefendMode.Enforce });
+        var h = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["user-agent"] = "agent/1" };
+        var path = d.Crumbs(new DefendRequest { Method = "GET", Target = "/", Headers = h, RemoteAddr = "198.51.100.50" })!.Path;
+        var header = EdgeTriangleTests.CtxHeader(path, new());
+        h[EdgeContext.ContextHeader] = header;
+        h["x-request-id"] = Rid(header);
+        var r = d.Decide(new DefendRequest { Method = "GET", Target = path, Headers = h, RemoteAddr = "198.51.100.50" });
+        Assert.NotEqual(DefendVerdict.Deny, r.Decision);
+        var v = Payload(r.Verdict!);
+        Assert.Contains("\"act\":\"block\"", v, StringComparison.Ordinal);
+        Assert.Contains("\"cat\":\"trap\"", v, StringComparison.Ordinal);
+        Assert.Contains("\"src\":\"defend\"", v, StringComparison.Ordinal);
     }
 }
